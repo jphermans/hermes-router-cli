@@ -24,6 +24,7 @@ Built on top of the keys Hermes stored for you — no re-exporting needed.
 ## 🌊 Table of contents
 
 1. [🌟 Why this exists](#-why-this-exists)
+1. [⚡ Quick start: curl → install](#-quick-start-curl--install)
 1. [📦 Install](#-install)
 1. [🗑️ Uninstall](#-uninstall)
 1. [🔑 Where keys come from](#-where-keys-come-from)
@@ -68,6 +69,54 @@ trace.
 | **Hermes auth integration**       | 🪶     | Reads `~/.hermes/.env` + `~/.hermes/auth.json` automatically |
 | **Vision routing**                 | 👁     | Auto-pick VLMs when images are attached |
 | **Zero new dependencies**          | 🪶     | Just PyYAML. Nothing else. |
+
+---
+
+## ⚡ Quick start: curl → install
+
+One-liner — no `git clone` needed. The bootstrap downloads the latest tarball
+from GitHub, verifies it, and runs `install.py`:
+
+```bash
+python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
+```
+
+After it finishes, `hr` is available on your `PATH`. Try it:
+
+```bash
+hr route --prompt "Translate hello to Dutch" --pretty
+hr models
+hr auth
+```
+
+### Pinning to a specific commit
+
+For scripts and CI, pass the exact commit SHA and tarball hash:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py \
+  | python3 - --sha=<tarball-sha> --prefix=./hermes-router
+```
+
+### Forwarding install flags
+
+Everything after `--` goes straight to `install.py`:
+
+```bash
+python3 -c "$(curl -fsSL ...)" -- --no-symlink --no-color
+```
+
+### How it works
+
+1. ⬇️ Downloads the latest tarball from `codeload.github.com/<repo>/tar.gz/main`
+1. 🔐 Verifies SHA-256 (when `--sha=` is provided; otherwise warns with the digest)
+1. 📦 Extracts the tarball into a temp dir
+1. 📂 Moves the extracted project to `--prefix` (default: `.`)
+1. 🚀 Runs `install.py install` from that prefix, forwarding all extra args
+1. 🧹 Cleans up the temp dir
+
+The result is a fully installed hermes-router project directory with a
+working `.venv/` inside it, ready to use.
 
 ---
 

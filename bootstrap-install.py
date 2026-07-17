@@ -76,10 +76,13 @@ def main(argv):
                          "Skip for the latest commit, or pin to a specific commit.")
     ap.add_argument("--dry-run", action="store_true",
                     help="download + verify only; don't actually run install.py")
+    ap.add_argument("--prefix", default=".",
+                    help="target directory for the extracted project (default: current dir)")
     # Everything after `--` is forwarded as a single shell-style argv list
     # to install.py. argparse's `nargs='+'` is too clunky for this.
     # Split argv at '--': everything before is for us, everything after
-    # goes straight to install.py.
+    # goes straight to install.py. If there's no '--', any unknown flags
+    # parse_known_args catches are forwarded too.
     if "--" in argv:
         sep = argv.index("--")
         our_args = argv[:sep]
@@ -87,7 +90,12 @@ def main(argv):
     else:
         our_args = argv
         forward = []
-    args = ap.parse_args(our_args)
+
+    args, unknown = ap.parse_known_args(our_args)
+    # Any `unknown` flags that the bootstrap doesn't recognise are
+    # also forwarded to install.py (makes `--no-symlink` work without `--`).
+    if unknown and not forward:
+        forward = unknown
 
     url = ARCHIVE_URL.format(ref=args.ref, repo=args.repo)
     _print_status("info", f"📡 Fetching {url}")
@@ -128,56 +136,72 @@ def main(argv):
         _print_status("err", "Fetched content doesn't look like a gzip archive.")
         return 4
 
-    # Extract to a temp dir, find the inner repo directory, run install.py.
+    # Extract to a temp directory, then move the inner repo to --prefix.
     tmp = tempfile.mkdtemp(prefix="hermes-router-bootstrap-")
     try:
-        try:
-            with tarfile.open(fileobj=io.BytesIO(code), mode="r:gz") as tf:
-                # GitHub tarballs have a single top-level dir named
-                # 'reponame-<short-sha>'. Extract everything into tmp.
+        with tarfile.open(fileobj=io.BytesIO(code), mode="r:gz") as tf:
+            try:
+                tf.extractall(path=tmp, filter="data")  # Py 3.12+
+            except (TypeError, ValueError):
                 try:
-                    tf.extractall(path=tmp, filter="data")  # Py 3.12+
-                except (TypeError, ValueError):
-                    # Older Python: filter kwarg not yet a strict string.
-                    # Use the numeric equivalent or just no filter (we
-                    # trust the source — this is GitHub's signed tarball).
-                    try:
-                        tf.extractall(path=tmp)
-                    except TypeError:
-                        # Python 3.12 strict filter rejects non-strings — fall back.
-                        tf.extractall(path=tmp, filter=None)
-        except Exception as e:
-            _print_status("err", f"Failed to extract tarball: {e}")
-            return 5
-
-        # Find the extracted directory (top-level only).
-        extracted = [p for p in os.listdir(tmp) if not p.startswith(".")]
-        if len(extracted) != 1:
-            _print_status("err",
-                f"Expected single top-level dir in tarball, got: {extracted}")
-            return 6
-        project_dir = os.path.join(tmp, extracted[0])
-        install_py = os.path.join(project_dir, "install.py")
-        if not os.path.exists(install_py):
-            _print_status("err", f"No install.py found in {project_dir}")
-            return 6
-
-        if args.dry_run:
-            _print_status("info", "🏁 --dry-run set; not executing.")
-            _print_status("info", f"   extracted to: {project_dir}")
-            return 0
-
-        # Run install.py live, forwarding stdout/stderr.
-        cmd = [sys.executable, install_py, *forward]
-        _print_status("info", f"🚀 Running: {' '.join(cmd)}")
-        result = subprocess.run(cmd)
-        return result.returncode
-    finally:
+                    tf.extractall(path=tmp)
+                except TypeError:
+                    tf.extractall(path=tmp, filter=None)
+    except Exception as e:
+        _print_status("err", f"Failed to extract tarball: {e}")
         try:
-            import shutil as _sh
-            _sh.rmtree(tmp, ignore_errors=True)
+            import shutil as _sh; _sh.rmtree(tmp, ignore_errors=True)
         except Exception:
             pass
+        return 5
+
+    # Find the extracted top-level dir (GitHub tarballs have one named
+    # 'reponame-<short-sha>').
+    extracted = [p for p in os.listdir(tmp) if not p.startswith(".")]
+    if len(extracted) != 1:
+        _print_status("err", f"Expected single top-level dir, got: {extracted}")
+        try:
+            import shutil as _sh; _sh.rmtree(tmp, ignore_errors=True)
+        except Exception:
+            pass
+        return 6
+    project_dir = os.path.join(tmp, extracted[0])
+    install_py = os.path.join(project_dir, "install.py")
+    if not os.path.exists(install_py):
+        _print_status("err", f"install.py not found in extracted {project_dir}")
+        try: import shutil as _sh; _sh.rmtree(tmp, ignore_errors=True)
+        except Exception: pass
+        return 6
+
+    # Move the extracted project to the requested prefix (default: current dir).
+    prefix = os.path.abspath(args.prefix)
+    parent = os.path.dirname(prefix)
+    os.makedirs(parent, exist_ok=True)
+    if os.path.exists(prefix):
+        # Don't blow away an existing directory — let the user manage conflicts.
+        _print_status("err",
+            f"--prefix directory already exists: {prefix}\n"
+            "    Delete it first, or use a different --prefix.")
+        try: import shutil as _sh; _sh.rmtree(tmp, ignore_errors=True)
+        except Exception: pass
+        return 7
+    os.rename(project_dir, prefix)
+    # Clean up the now-empty tmp (only the top-level dir's parent remains).
+    try:
+        import shutil as _sh; _sh.rmtree(tmp, ignore_errors=True)
+    except Exception:
+        pass
+
+    if args.dry_run:
+        _print_status("info", "🏁 --dry-run set; not executing.")
+        _print_status("info", f"   extracted + moved to: {prefix}")
+        return 0
+
+    # Run install.py from the permanent prefix.
+    cmd = [sys.executable, os.path.join(prefix, "install.py"), *forward]
+    _print_status("info", f"🚀 Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd)
+    return result.returncode
 
 
 if __name__ == "__main__":
