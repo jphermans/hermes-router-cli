@@ -54,11 +54,35 @@ why each one failed. There's no silent "I gave up" — the response includes a
 ```bash
 git clone https://github.com/<you>/hermes-router.git
 cd hermes-router
+python3 install.py                  # colour output, full setup
+```
+
+That single command does everything:
+1. Creates a `.venv` (re-uses an existing one if present)
+2. Installs PyYAML into it
+3. Marks `hr` executable
+4. Symlinks `~/.local/bin/hr` so `hr` works from anywhere on your PATH
+5. Runs `hr doctor` and prints a colourised health report
+
+It's idempotent — running it again detects existing state and skips the work.
+Useful flags:
+
+```bash
+python3 install.py --no-color      # plain text (or set NO_COLOR=1)
+python3 install.py --no-symlink    # don't touch ~/.local/bin
+python3 install.py --no-doctor     # skip the post-install health check
+```
+
+If you prefer the manual path:
+
+```bash
+cd hermes-router
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Add it to your PATH (optional):
+If you'd rather not use the installer, just symlink `hr` from this directory
+into anything on your `$PATH`:
 
 ```bash
 ln -s "$(pwd)/hr" ~/.local/bin/hr
