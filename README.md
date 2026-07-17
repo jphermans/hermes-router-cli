@@ -85,7 +85,7 @@ from GitHub, verifies it, and runs `install.py`. It installs into
 **`~/.hermes/hermes-router/`** — right next to Hermes' own config:
 
 ```bash
-python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/38abc1a/bootstrap-install.py)"
+python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
 ```
 
 After it finishes, `hr` is available on your `PATH`. Try it:
@@ -130,11 +130,11 @@ working `.venv/` inside it, ready to use.
 > anywhere, no clutter in your projects folder:
 >
 > ```bash
-> python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/38abc1a/bootstrap-install.py)"
+> python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
 > ```
 >
-> > 💡 The one-liner is pinned to a specific commit SHA for reproducibility.
-> > Use `--ref main` for the latest (may have CDN cache delay).
+> > 💡 The one-liner fetches the latest `main` branch. A pinned commit SHA
+> > is available by adding `--ref <sha>` to the bootstrap flags.
 >
 > ```
 > ...
