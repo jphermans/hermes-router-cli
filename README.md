@@ -11,7 +11,7 @@
 [![Models](https://img.shields.io/badge/models-37-2ea44f)](config.yaml)
 [![Sub-commands](https://img.shields.io/badge/subcommands-8-blue)](#-usage)
 [![Tests](https://img.shields.io/badge/tests-28%20passing-brightgreen)](tests/)
-[![Plugin](https://img.shields.io/badge/Hermes%20Plugin-2.0.0-8A2BE2)](#-hermes-agent-plugin)
+[![Plugin](https://img.shields.io/badge/Hermes%20Plugin-2.1.0-8A2BE2)](#-hermes-agent-plugin)
 [![Cost](https://img.shields.io/badge/$0%2Ftoken-free%20pool-2ea44f)](#-free-vs-paid--the-one-knob)
 
 A Python CLI that **routes any prompt to the cheapest LLM that can answer it**,

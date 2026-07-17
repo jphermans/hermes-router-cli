@@ -283,7 +283,7 @@ import subprocess
 from pathlib import Path
 
 PLUGIN_NAME = "hermes-router"
-VERSION = "1.0.0"
+VERSION = "2.1.0"
 
 
 def _find_project() -> Path:
