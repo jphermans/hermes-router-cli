@@ -150,7 +150,7 @@ inside a session). Now you can use it from chat — see the plugin section below
 
 A 15-second terminal recording of the full install + test flow:
 
-<a href="https://asciinema.org/a/Eg5LcbfqOB30wZDn" target="_blank"><img src="https://asciinema.org/a/Eg5LcbfqOB30wZDn.svg" alt="asciicast" width="640"/></a>
+<a href="https://asciinema.org/a/YnIXcMZNBF8IGAcC" target="_blank"><img src="https://asciinema.org/a/YnIXcMZNBF8IGAcC.svg" alt="asciicast" width="640"/></a>
 
 The `.cast` file is in [`docs/install-demo.cast`](docs/install-demo.cast) — play it locally with:
 
@@ -163,6 +163,9 @@ asciinema play docs/install-demo.cast
 > account. To make it permanent, visit
 > [asciinema.org/connect](https://asciinema.org/connect) and re-link the
 > recording, or re-upload after authenticating with `asciinema auth`.
+>
+> Alternatively, anyone with the recording can re-upload it themselves —
+> the raw `.cast` file is committed to this repo, so it's never truly lost.
 
 
 ---
