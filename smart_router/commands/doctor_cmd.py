@@ -32,16 +32,33 @@ def run(args: argparse.Namespace) -> int:
 
     # 1. Config file
     if cfg_path and cfg_path.exists():
-        findings.append({"check": "config.yaml", "ok": True,
-                         "detail": f"loaded {len(cfg.get('providers', {}) or {}) if (cfg := load_config()) else 0} providers"})
+        try:
+            cfg = load_config()
+            findings.append({
+                "check": "config.yaml",
+                "ok": True,
+                "detail": f"loaded {len(cfg.get('providers', {}) or {})} providers",
+            })
+        except ImportError as e:
+            # PyYAML-missing case. Surface a clear "run install.py" hint instead of
+            # burying the answer in a generic check failure.
+            findings.append({"check": "PyYAML installed", "ok": False,
+                             "detail": str(e)})
+            return _emit(args, findings)
+        except Exception as e:
+            findings.append({
+                "check": "config.yaml valid YAML",
+                "ok": False, "detail": str(e),
+            })
+            return _emit(args, findings)
     else:
-        findings.append({"check": "config.yaml", "ok": False, "detail": f"missing at {cfg_path}"})
+        findings.append({"check": "config.yaml", "ok": False,
+                         "detail": f"missing at {cfg_path}"})
 
-    try:
-        cfg = load_config()
-    except Exception as e:
-        findings.append({"check": "config.yaml valid YAML", "ok": False, "detail": str(e)})
-        return _emit(args, findings)
+    # If cfg wasn't loaded (file missing branch), set cfg={} so the rest
+    # of the function can still run consistently.
+    if 'cfg' not in dir() or 'cfg' not in locals():
+        cfg = {}
 
     # 2. Providers with at least one key
     providers_all = build_providers(cfg, only_with_keys=False)

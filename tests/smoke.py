@@ -257,7 +257,68 @@ def test_classify_distinct_tiers():
     print("  ✓ classify")
 
 
+def test_yaml_missing_raises_actionable_error():
+    """If PyYAML is not importable, _require_yaml() raises an ImportError
+    whose message tells the user to run `python3 install.py`. We fake the
+    'yaml module missing' condition via sys.modules + a meta-path blocker.
+    """
+    import importlib.abc, importlib.machinery, sys
+    from smart_router.providers import _require_yaml
+
+    class _BlockYaml(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname == "yaml" or fullname.startswith("yaml."):
+                return importlib.machinery.ModuleSpec(fullname, self, is_package=False)
+            return None
+
+        def create_module(self, spec):
+            return None
+
+        def exec_module(self, module):
+            raise ImportError(
+                f"No module named {module.__name__!r}; PyYAML missing (test only)"
+            )
+
+    blocker = _BlockYaml()
+    sys.meta_path.insert(0, blocker)
+    # Also evict any cached yaml module so the next import consults the blocker.
+    yaml_modules = [m for m in list(sys.modules) if m == "yaml" or m.startswith("yaml.")]
+    for m in yaml_modules:
+        sys.modules.pop(m, None)
+    try:
+        try:
+            _require_yaml()
+            raise AssertionError("expected ImportError")
+        except ImportError as e:
+            assert "install.py" in str(e), (
+                f"error message should mention install.py, got: {e}"
+            )
+    finally:
+        try:
+            sys.meta_path.remove(blocker)
+        except ValueError:
+            pass
+    print("  ✓ PyYAML missing → actionable ImportError")
+
+
 def test_budget_load_save(tmp_path):
+    from smart_router import budget
+    saved = budget.BUDGET_PATH
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    try:
+        budget.BUDGET_PATH = tmp_path / "b.json"
+        budget.save_budget({})
+        assert budget.spend_for_current_month() == {}
+        budget.record("zai", 0.00123)
+        assert budget.spend_for_current_month().get("zai") == 0.00123
+        assert budget.check("zai", 0.0, 0) is True
+        assert budget.check("zai", 10, 1) is False
+    finally:
+        budget.BUDGET_PATH = saved
+    print("  ✓ budget")
+
+
+def test_doctor_clean_output():
     from smart_router import budget
     saved = budget.BUDGET_PATH
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -728,6 +789,7 @@ def main():
     test_collect_keys_cascade_combines()
     test_build_providers_uses_hermes_sources(HERE / "_tmp_hermes_e2e_test")
     test_classify_distinct_tiers()
+    test_yaml_missing_raises_actionable_error()
     test_budget_load_save(HERE / "_tmp")
     test_providers_multi_key()
     test_cost_class_split()

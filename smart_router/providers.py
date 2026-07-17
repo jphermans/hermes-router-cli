@@ -21,11 +21,38 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional
 
+# PyYAML is a runtime dependency, not an import-time hard requirement.
+# If it's missing we set a sentinel flag and let the caller (doctor,
+# tests) surface a clear "run install.py" message — much friendlier than
+# sys.exit() at import time. ImportError would happen silently anyway
+# when load_config() is called, but doing it eagerly here gives us a
+# single place to track the error.
 try:
-    import yaml
-except ImportError:
-    import sys
-    sys.exit("Missing dependency: pip install pyyaml")
+    import yaml as _yaml  # noqa: F401  (the symbol is referenced via _yaml.safe_load)
+    _YAML_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _yaml = None
+    _YAML_AVAILABLE = False
+
+
+def _require_yaml() -> None:
+    """Raise a clear ImportError if PyYAML is not importable.
+
+    Callers that need YAML parsing must invoke this at the top of their
+    entrypoint. The message tells the user exactly what to do, rather
+    than letting the original MissingDependencyError swallow context.
+
+    We re-check the import on every call (rather than caching a flag)
+    so that test scaffolding (e.g. a meta-path blocker) and a freshly
+    installed yaml both work without a module re-import.
+    """
+    try:
+        import yaml  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "PyYAML is required to parse config.yaml. "
+            "Run `python3 install.py` to set up the .venv with PyYAML installed."
+        ) from e
 
 HERE = Path(__file__).resolve().parent
 CONFIG_PATH = HERE.parent / "config.yaml"
@@ -304,11 +331,15 @@ def _collect_keys_simple(env_var: str) -> list[str]:
 
 
 def load_config(path: Optional[Path] = None) -> dict:
+    """Parse the project's config.yaml. Raises ImportError if PyYAML isn't
+    installed in the current interpreter — install.py is the canonical fix.
+    """
+    _require_yaml()
     p = path or CONFIG_PATH
     if not p.exists():
         raise FileNotFoundError(f"No config.yaml at {p}")
     with open(p) as f:
-        return yaml.safe_load(f) or {}
+        return _yaml.safe_load(f) or {}
 
 
 def _resolve_cost_class(model_raw: dict, provider_default: str) -> str:

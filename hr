@@ -1,7 +1,64 @@
 #!/usr/bin/env python3
-"""Convenience launcher so `hr` works as a binary in PATH."""
-from smart_router.__main__ import main
+"""
+Convenience launcher so `hr` works as a binary in PATH.
+
+Resolves to the project's own .venv/bin/python3 when it exists, falling
+back to the current `sys.executable` otherwise. This means the launcher
+"just works" whether the user invokes it through PATH (`hr --version`) or
+from the project root (`./hr --version`). Crucially, it does NOT mutate
+the venv — that's install.py's job.
+"""
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+# __file__ may be a symlink (`/home/<user>/.local/bin/hr -> <project>/hr`).
+# resolve() follows symlinks to land on the actual hr file inside the project.
+PROJECT_ROOT = Path(__file__).resolve().parent
+VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python3"
+VENV_PYTHON_WIN = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
+
+# Forward every arg we got; re-exec under the venv python if it exists AND
+# we're not already running inside it (avoid infinite re-exec).
+def _is_running_inside(target: Path) -> bool:
+    try:
+        return Path(os.path.realpath(sys.executable)).resolve() == target.resolve()
+    except Exception:
+        return False
+
+
+if sys.platform == "win32" and VENV_PYTHON_WIN.exists() \
+        and not _is_running_inside(VENV_PYTHON_WIN):
+    os.execv(str(VENV_PYTHON_WIN), [str(VENV_PYTHON_WIN)] + sys.argv)
+elif VENV_PYTHON.exists() and not _is_running_inside(VENV_PYTHON):
+    os.execv(str(VENV_PYTHON), [str(VENV_PYTHON)] + sys.argv)
+
+# No venv present — run with whatever interpreter the user is using.
+# Tell the user up front if smart_router can't be imported; install.py
+# is the canonical way to (re)create the venv + install PyYAML.
+sys.path.insert(0, str(PROJECT_ROOT))
+try:
+    from smart_router.__main__ import main
+except ModuleNotFoundError as e:
+    sys.stderr.write(
+        f"hr: smart_router is not importable: {e}\n"
+        f"  hint: run `python3 install.py` to create the venv and install deps.\n"
+    )
+    sys.exit(2)
+except SystemExit:
+    raise
+except Exception:
+    # smart_router's top-level may try to import yaml; if the env is
+    # missing PyYAML, show the install hint instead of a raw traceback.
+    if "yaml" in repr(sys.exc_info()[1]).lower() or "No module" in repr(sys.exc_info()[1]):
+        sys.stderr.write(
+            "hr: PyYAML is not installed in this Python interpreter.\n"
+            f"  hint: run `python3 install.py` to set up {PROJECT_ROOT / '.venv'}.\n"
+        )
+        sys.exit(2)
+    raise
 
 if __name__ == "__main__":
-    import sys
     sys.exit(main())
