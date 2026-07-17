@@ -88,6 +88,29 @@ into anything on your `$PATH`:
 ln -s "$(pwd)/hr" ~/.local/bin/hr
 ```
 
+## Uninstall
+
+The same script uninstalls too. By design it's conservative — it won't delete
+the project, your config, or your `.venv/` unless you ask for it.
+
+```bash
+python3 install.py uninstall --dry-run       # see what would be removed
+python3 install.py uninstall                 # remove ~/.local/bin/hr (interactive confirm)
+python3 install.py uninstall --yes --purge    # also delete ./venv/ (no venv left behind)
+```
+
+What gets removed, in order:
+
+1. `~/.local/bin/hr` — but only if it actually points at this project. If
+   it's a symlink to something else, or a regular file with that name,
+   it's left alone. (Safety: never touch another tool's `hr`.)
+2. `./venv/` — only when you pass `--purge`. The venv is preserved by default
+   because re-installing it later is the slow step.
+3. The whole project directory — only when you pass `--purge-project`, and
+   never while you're CWD-inside it. **This is the nuclear option.**
+
+Re-running is safe: missing items are reported and skipped.
+
 ### Where keys come from
 
 The router reads API keys in three places, in order:

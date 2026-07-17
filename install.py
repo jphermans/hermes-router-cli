@@ -241,25 +241,71 @@ def print_summary() -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Install hermes-router into a local venv and link the `hr` CLI.",
+        description="Install or uninstall hermes-router (CLI + venv + ~/.local/bin/hr symlink).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Run from the project root. Re-running is safe (idempotent).",
+        epilog="Run `python3 install.py install` or `python3 install.py uninstall`.",
     )
-    ap.add_argument("--no-symlink", action="store_true",
-                    help="Skip creating ~/.local/bin/hr symlink")
-    ap.add_argument("--no-doctor", action="store_true",
-                    help="Skip the post-install doctor health check")
-    ap.add_argument("--no-color", action="store_true",
-                    help="Disable ANSI colors (plain text output)")
-    args = ap.parse_args()
+    sub = ap.add_subparsers(dest="action", required=False)
 
-    if args.no_color:
-        # Override USE_COLOR + null out every style code so nothing escapes.
+    # ── install (default — backward compatible) ────────────────────────────
+    p_install = sub.add_parser(
+        "install", help="(default) Set up venv, install deps, link hr CLI.")
+    p_install.add_argument("--no-symlink", action="store_true",
+                           help="Skip creating ~/.local/bin/hr symlink")
+    p_install.add_argument("--no-doctor", action="store_true",
+                           help="Skip the post-install doctor health check")
+    p_install.add_argument("--no-color", action="store_true",
+                           help="Disable ANSI colors (plain text output)")
+    p_install.set_defaults(func=cmd_install)
+
+    # ── uninstall ──────────────────────────────────────────────────────────
+    p_uninst = sub.add_parser(
+        "uninstall",
+        help="Remove the ~/.local/bin/hr symlink, the .venv, and (optionally) the project directory.",
+        description=(
+            "Removes the artefacts installed by `python3 install.py install`.\n"
+            "  • The ~/.local/bin/hr symlink (always — if it points at this project)\n"
+            "  • The .venv/ directory (only with --purge; default: keep it)\n"
+            "  • The project directory itself (only with --purge-project)\n"
+            "Re-running is safe: missing items are reported and skipped."),
+    )
+    p_uninst.add_argument("--purge", action="store_true",
+                          help="Also delete ./.venv/ (the virtual environment).")
+    p_uninst.add_argument("--purge-project", action="store_true",
+                          help="ALSO delete the entire project directory (DANGEROUS).")
+    p_uninst.add_argument("--keep-config", action="store_true",
+                          help="Keep config.yaml and .env.example untouched (default: keep).")
+    p_uninst.add_argument("--yes", "-y", action="store_true",
+                          help="Don't ask for confirmation — useful in scripts.")
+    p_uninst.add_argument("--dry-run", action="store_true",
+                          help="Print what would be removed, but do nothing.")
+    p_uninst.add_argument("--no-color", action="store_true",
+                          help="Disable ANSI colors (plain text output)")
+    p_uninst.set_defaults(func=cmd_uninstall)
+
+    # Step 1: tolerant parse — flags like `--no-symlink` belong to the
+    # install sub-command, not to the top-level parser. parse_known_args
+    # doesn't error on them.
+    args, unknown = ap.parse_known_args()
+
+    # Default to `install` so plain `python3 install.py` still works.
+    # If sub-command was missing, forward the unknown flags to the install sub-parser.
+    if not getattr(args, "action", None):
+        # Only forward flags the install sub-parser actually accepts.
+        accepted = {"--no-symlink", "--no-doctor", "--no-color"}
+        forwarded = [a for a in unknown if a in accepted]
+        args = ap.parse_args(["install", *forwarded])
+
+    if getattr(args, "no_color", False):
         globals()["USE_COLOR"] = False
         for attr in ("BOLD", "DIM", "RED", "GREEN", "YELLOW", "BLUE",
                      "MAGENTA", "CYAN", "BGBLUE", "RESET"):
             setattr(Style, attr, "")
+    return int(args.func(args) or 0)
 
+
+def cmd_install(args) -> int:
+    """`install` sub-command: full setup with venv + deps + symlink + doctor."""
     # Compute total so skipping steps renumbers [N/M] correctly.
     total_steps = 5 - (1 if args.no_symlink else 0) - (1 if args.no_doctor else 0)
 
@@ -285,6 +331,127 @@ def main() -> int:
         n += 1; step_health_check(n, total_steps)
 
     print_summary()
+    return 0
+
+
+def cmd_uninstall(args) -> int:
+    """`uninstall` sub-command: remove symlink, optionally purge venv, optionally project."""
+    print()
+    banner("hermes-router uninstaller")
+    dim(f"Source: {humanize_path(ROOT)}")
+    dim(f"Dry run: {args.dry_run}")
+    print()
+
+    # ── 1. Pre-flight: discover what we'd touch ──────────────────────────────
+    symlink = Path.home() / ".local" / "bin" / "hr"
+    venv = ROOT / ".venv"
+    targets: list[tuple[str, Path, str]] = []  # (label, path, action)
+
+    # Always offer to remove the symlink — but ONLY if it actually points
+    # at OUR project. Don't delete someone else's `hr` if there's a name clash.
+    symlink_owned = False
+    if symlink.is_symlink():
+        target = Path(os.readlink(symlink))
+        if target.resolve() == (ROOT / "hr").resolve():
+            symlink_owned = True
+            targets.append(("symlink", symlink, "remove ~/.local/bin/hr"))
+        else:
+            warn(f"Skipping ~/.local/bin/hr: it points elsewhere ({target})")
+    elif symlink.exists():
+        warn(f"Skipping ~/.local/bin/hr: exists but is not a symlink (regular file?).")
+    else:
+        info(_c("No ~/.local/bin/hr symlink present — nothing to remove.", Style.DIM))
+
+    if args.purge:
+        if venv.exists():
+            size_mb = sum(
+                (stat.st_size for stat in os.scandir(venv) if stat.is_file())
+            ) if False else 0  # quick-ish; not precise
+            targets.append(("venv", venv, f"delete ./.venv ({size_mb//1024}kB estimate)"))
+        else:
+            info(_c("No ./.venv/ present — nothing to purge.", Style.DIM))
+
+    if args.purge_project:
+        if ROOT.resolve() != Path.cwd().resolve():
+            targets.append(("project", ROOT, f"delete the whole project at {humanize_path(ROOT)}"))
+        else:
+            warn("Refusing to --purge-project when run from inside the project cwd.")
+
+    # ── 2. Show the plan ────────────────────────────────────────────────────
+    if not targets:
+        ok("Nothing to uninstall — system is already clean.")
+        print()
+        return 0
+
+    step_plan = [
+        ("[1/N]", "symlink",  "Remove the ~/.local/bin/hr symlink" if symlink_owned else "(skipped: not ours)"),
+        ("[2/N]", "venv",     "Delete ./venv/ (Python deps cache)" if args.purge else "(skipped, pass --purge to enable)"),
+        ("[3/N]", "project",  "Delete the project directory itself" if args.purge_project else "(skipped, pass --purge-project to enable)"),
+    ][: max(1, len(targets))]
+    # Renumber to [N/M] based on what's actually being done.
+    total = max(1, len(targets))
+    plan_lines = []
+    for i, (label, kind, note) in enumerate(step_plan, 1):
+        present = any(t[0] == kind for t in targets)
+        bar = _c("✓", Style.GREEN) if present else _c("·", Style.DIM)
+        plan_lines.append(f"    {bar} {label} {kind:<8}  {note}")
+    print(_c("  Plan:", Style.BOLD))
+    for ln in plan_lines:
+        print(ln)
+    print()
+
+    if args.dry_run:
+        ok("(dry-run) nothing was changed. Re-run without --dry-run to apply.")
+        print()
+        return 0
+
+    # ── 3. Confirm with the user (unless --yes) ──────────────────────────────
+    if not args.yes:
+        # Build a precise prompt so the user sees exactly what they're agreeing to.
+        things_to_remove = [t[2] for t in targets]
+        prompt = (
+            "Proceed with the above? " +
+            _c("(type 'yes' to confirm)", Style.DIM)
+        )
+        print(_c(f"  About to: {'; '.join(things_to_remove)}", Style.YELLOW))
+        try:
+            answer = input(f"  {prompt} > ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            err("Aborted (no response). Nothing was changed.")
+            return 1
+        if answer not in ("y", "yes"):
+            err(f"Aborted ('{answer}'). Nothing was changed.")
+            return 1
+
+    # ── 4. Execute the plan ──────────────────────────────────────────────────
+    n = 0
+    total = len(targets)
+    removed_any = False
+    for label, path, note in targets:
+        n += 1
+        counter = _c(f"[{n}/{total}]", Style.DIM, Style.CYAN)
+        print(f"  {counter} Removing {label}: {note}")
+        try:
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+            else:
+                shutil.rmtree(path)
+            ok(f"{label} removed — {humanize_path(path)}")
+            removed_any = True
+        except FileNotFoundError:
+            warn(f"{label} already gone — skipped.")
+        except Exception as e:
+            err(f"{label} failed: {type(e).__name__}: {e}")
+    print()
+
+    if removed_any:
+        warn("Heroic. Hermes-router is uninstalled.")
+        if not args.purge:
+            dim("The .venv/ is preserved so you can re-install quickly later.")
+        if not args.purge_project:
+            dim("Project source files (smart_router/, tests/, README.md, …) are kept.")
+        dim("To bring it back:  python3 install.py install")
     return 0
 
 
