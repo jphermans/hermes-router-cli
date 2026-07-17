@@ -451,7 +451,25 @@ def _route_impl(
                           cwd=str(PROJECT) if PROJECT.exists() else None,
                           env={{**os.environ, "PYTHONPATH": str(PROJECT) if PROJECT.exists() else ""}})
         out = r.stdout or r.stderr
-        return out.strip() if out else f"(empty response, exit {{r.returncode}})"
+        text = out.strip() if out else ""
+        # Try to extract just the response text from JSON output so the
+        # agent doesn't have to wade through a 50-line dict.
+        try:
+            import json as _json
+            data = _json.loads(text)
+            if isinstance(data, dict) and data.get("ok") and "response" in data:
+                prov = data.get("selected_provider", "") or ""
+                model = data.get("selected_model", "") or ""
+                cost = data.get("est_cost_usd", 0) or 0
+                prefix = ""
+                if prov and model:
+                    prefix = "[~$" + str(cost) + " " + prov + "/" + model + "] "
+                return prefix + data["response"]
+            if isinstance(data, dict) and not data.get("ok"):
+                return data.get("error", "route failed")
+        except Exception:
+            pass
+        return text or f"(empty response, exit {{r.returncode}})"
     except subprocess.TimeoutExpired:
         return "(timed out after 120s)"
     except FileNotFoundError:
