@@ -488,6 +488,15 @@ rm -f ~/.local/bin/hr                     # 3. remove the CLI symlink
 rm -rf ~/.hermes/hermes-router             # 4. delete the project
 ```
 
+### One-command script (easiest)
+
+```bash
+bash ~/.hermes/scripts/uninstall-hermes-router.sh
+```
+
+> This script removes everything — plugin, symlink, project directory — in one
+> go. Installed automatically by the bootstrap; no download needed.
+
 ### Via the installer script
 
 ```bash
