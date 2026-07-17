@@ -29,12 +29,13 @@ can call). Same engine, different surfaces.
 ## 🌊 Table of contents
 
 1. [🌟 Why this exists](#-why-this-exists)
-1. [⚡ Quick start: curl → install](#-quick-start-curl--install)
-1. [🧩 Hermes Agent plugin](#-hermes-agent-plugin)
-1. [📦 Install](#-install)
+1. [⚡ Quick start: install in 2 minutes](#-quick-start-install-in-2-minutes)
+1. [🪶 Using hr in your terminal (CLI)](#-using-hr-in-your-terminal-cli)
+1. [🧩 Hermes Agent plugin: use from chat](#-hermes-agent-plugin-use-from-chat)
+1. [📦 Alternative install methods](#-alternative-install-methods)
 1. [🗑️ Uninstall](#-uninstall)
 1. [🔑 Where keys come from](#-where-keys-come-from)
-1. [🎯 Usage](#-usage)
+1. [🎯 Usage reference](#-usage-reference)
 1. [🧠 How it picks](#-how-it-picks)
 1. [🐍 Programmatic use](#-programmatic-use)
 1. [⚙️ Configuration](#-configuration)
@@ -78,106 +79,135 @@ trace.
 
 ---
 
-## ⚡ Quick start: curl → install
+## ⚡ Quick start: install in 2 minutes
 
-One-liner — no `git clone` needed. The bootstrap downloads the latest tarball
-from GitHub, verifies it, and runs `install.py`. It installs into
-**`~/.hermes/hermes-router/`** — right next to Hermes' own config:
+### Step 1 — Install (one command, no cd needed)
+
+Open a terminal and paste this:
 
 ```bash
 python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
 ```
 
-After it finishes, `hr` is available on your `PATH`. Try it:
+That's it. No `cd`, no `git clone`, nothing else. The script:
 
-```bash
-hr route --prompt "Translate hello to Dutch" --pretty
-hr models
-hr auth
+1. Downloads the project
+1. Extracts it into **`~/.hermes/hermes-router/`** (right next to Hermes' own config)
+1. Creates a Python virtual environment (`.venv`)
+1. Installs PyYAML
+1. Creates a **`hr`** command on your PATH
+1. Installs the **Hermes Agent plugin**
+1. Runs a health check
+
+You'll see something like:
+
+```
+📁 Installing into /home/you/.hermes/hermes-router
+...
+✓ config.yaml                loaded 11 providers
+✓ providers with keys        10/11 have at least one key configured
+...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  All set.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-### Pinning to a specific commit
+### Step 2 — Test the CLI
 
-For scripts and CI, pass the exact commit SHA and tarball hash:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py \
-  |  python3 - --sha=<tarball-sha> --prefix=~/.hermes/hermes-router
-```
-
-### Forwarding install flags
-
-Everything after `--` goes straight to `install.py`:
+Try these commands to see if everything works:
 
 ```bash
-python3 -c "$(curl -fsSL ...)" -- --no-symlink --no-color
+hr --version             # shows "hermes-router 1.0.0"
+hr doctor                # health check — shows your providers
+hr route --prompt "Say hello in Dutch" --class free --pretty
 ```
 
-### How it works
+If `hr doctor` shows your providers and `hr route` returns an answer,
+you're all set.
 
-1. ⬇️ Downloads the latest tarball from `codeload.github.com/<repo>/tar.gz/main`
-1. 🔐 Verifies SHA-256 (when `--sha=` is provided; otherwise warns with the digest)
-1. 📦 Extracts the tarball into a temp dir
-1. 📂 Moves the extracted project to `--prefix` (default: `~/.hermes/hermes-router/`)
-1. 🚀 Runs `install.py install` from that prefix, forwarding all extra args
-1. 🧹 Cleans up the temp dir
+### Step 3 — Enable the Hermes plugin
 
-The result is a fully installed hermes-router project directory with a
-working `.venv/` inside it, ready to use.
+To use the router from inside a Hermes chat session:
 
-> **Where does it install?** By default it installs into **`~/.hermes/hermes-router/`**
-> — right alongside Hermes' own config, plugins, and skills. No need to cd
-> anywhere, no clutter in your projects folder:
->
-> ```bash
-> python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
-> ```
->
-> > 💡 The one-liner fetches the latest `main` branch. A pinned commit SHA
-> > is available by adding `--ref <sha>` to the bootstrap flags.
->
-> ```
-> ...
-> 📁 Installing into /home/you/.hermes/hermes-router
-> ...
-> ```
->
-> Use `--prefix` to install elsewhere: `--prefix ~/some/other/path`.
+```bash
+hermes plugins enable hermes-router
+```
+
+Then start a **new Hermes session** (exit and re-launch, or type `/reset`
+inside a session). Now you can use it from chat — see the plugin section below.
+
+### What got installed where
+
+| What | Installed at | How to use it |
+|---|---|---|
+| **CLI** (`hr`) | `~/.local/bin/hr` → `~/.hermes/hermes-router/hr` | Type `hr route`, `hr doctor`, `hr models` in your terminal |
+| **Project** | `~/.hermes/hermes-router/` | Contains `.venv/`, `config.yaml`, source code |
+| **Plugin** | `~/.hermes/plugins/hermes-router/` | Enabled with `hermes plugins enable hermes-router` |
+| **Plugin tools** | Loaded by Hermes at session start | Say "route this through the free pool" in chat |
 
 ---
 
-## 🧩 Hermes Agent plugin
+## 🪶 Using hr in your terminal (CLI)
 
-hermes-router also ships as a **Hermes Agent plugin** — this gives Hermes
-access to `hr_route`, `hr_models`, and `hr_doctor` as native Hermes tools.
+The `hr` command works from anywhere in your terminal. It shares API keys
+with Hermes — no extra setup needed.
 
-### How it works
-
-| Layer | What it does |
-|---|---|
-| **Hermes Agent** (`~/.hermes/config.yaml`) | routes *itself* through its own model picker (Minimax, DeepSeek, etc.) |
-| **hermes-router plugin** (`~/.hermes/plugins/hermes-router/`) | adds `hr_route` / `hr_models` / `hr_doctor` tools that Hermes *may* call |
-| **hermes-router CLI** (`hr`) | standalone terminal tool — you use it directly |
-
-> The plugin does **not** replace Hermes' own model selection. Hermes still
-> picks its own model via `config.yaml`. The plugin gives Hermes the *option*
-> to route specific prompts through hermes-router's cost-aware pool.
-
-### Install
-
-The plugin lives in `~/.hermes/plugins/hermes-router/` and is automatically
-created by `install.py` (included in the default install; skip with
-`--no-plugin`). Enable it with:
+### Check the health of your setup
 
 ```bash
-hermes plugins enable hermes-router        # ✅ enable after install
-hermes plugins list | grep hermes-router    # should show "enabled"
+hr doctor
 ```
 
-After enabling, start a **new Hermes session** (`/reset` in chat, or exit and
-re-launch). The three tools — `hr_route`, `hr_models`, `hr_doctor` — will
-appear in Hermes' tool list. The plugin is **auto-generated** with the
-correct project path for your machine — no hardcoded paths.
+Shows which providers have keys, how many free/paid models are available,
+and any configuration issues.
+
+### Route a prompt
+
+```bash
+# Free pool (subscription plans) — recommended for everyday use
+hr route --prompt "Translate hello to French" --class free --pretty
+
+# Paid pool (billed APIs) — when you need a smarter model
+hr route --prompt "Write a React component" --class paid --pretty
+
+# Let the router decide (any pool, cheapest first)
+hr route --prompt "Summarize this: ..." --class any --pretty
+```
+
+### List available models
+
+```bash
+hr models                          # all models, all providers
+hr models --class free             # only free models
+hr models --class paid --tier pro  # only paid pro-tier models
+```
+
+### Check which API keys are loaded
+
+```bash
+hr auth                            # masked output (secure)
+hr auth --show                     # shows last 4 chars of each key
+```
+
+### Interactive REPL
+
+```bash
+hr chat
+```
+
+Type prompts, get answers. **Ctrl-D to exit.**
+
+For a full command reference, see the [Usage reference](#-usage-reference) section.
+
+---
+
+## 🧩 Hermes Agent plugin: use from chat
+
+### What the plugin does
+
+The plugin adds three **tools** that Hermes (the AI agent) can call when you
+ask it to. You don't type slash commands like `/hr doctor` — you just say
+what you want in natural language.
 
 ### Available tools
 
@@ -187,49 +217,59 @@ correct project path for your machine — no hardcoded paths.
 | `hr_models(cost_class, tier)` | Lists available models across all providers | "Which free models do I have?" |
 | `hr_doctor()` | Health check — providers, keys, config | "Is everything working?" |
 
+### How to use it — chat examples
+
+Once the plugin is enabled and you've started a new session (`/reset`), just
+tell Hermes what you want. Here are real examples:
+
+#### Health check
+> **You:** "Run hr_doctor to check my providers"
+>
+> **Hermes:** ✓ config.yaml loaded 11 providers, 10 with keys, 21 free models...
+
+#### Route through the free pool
+> **You:** "Route 'vertaal hallo naar Frans' door de free pool"
+>
+> **Hermes:** ✓ github_models/gpt-4o-mini (~$0.000000)
+>
+> "Hallo" in het Frans is "Bonjour".
+
+#### Route through the paid pool
+> **You:** "Route this through the paid pool: Write a Python script to parse a JSON file"
+>
+> **Hermes:** ✓ deepseek/deepseek-chat (~$0.000900)
+>
+> ```python
+> import json
+> with open("data.json") as f:
+>     data = json.load(f)
+> ...
+> ```
+
+#### List models
+> **You:** "Show me hr_models with only free providers"
+>
+> **Hermes:** Lists 21 free models across 5 providers
+
+#### What NOT to do
+> **You:** `/hr doctor`
+>
+> **Hermes:** ❌ Unknown command
+
 ### Important: Tools ≠ Slash Commands
 
-The plugin adds **tools** (`hr_route`, `hr_models`, `hr_doctor`) that the
-**Hermes AI agent** can call when you ask it to. These are **not** slash
-commands — you don't type `/hr doctor` in the chat. Instead, you just say
-what you want in natural language:
+The plugin adds **tools** (functions the AI agent can call), not **slash commands**
+(things you type starting with `/`). This is how Hermes plugins work:
 
 | You say... | What happens |
 |---|---|
-| "Run hr_doctor" | Hermes calls `hr_doctor()` and shows the health report |
-| "Route this through the free pool: vertaal hallo naar Frans" | Hermes calls `hr_route()` and returns the answer |
-| "Which free models do I have?" | Hermes calls `hr_models()` and shows the list |
+| "Run hr_doctor" | ✅ Hermes calls `hr_doctor()` and shows the health report |
+| "Route this through the free pool: vertaal hallo naar Frans" | ✅ Hermes calls `hr_route()` and returns the answer |
+| "Which free models do I have?" | ✅ Hermes calls `hr_models()` and shows the list |
 | `/hr doctor` | ❌ Unknown command — Hermes has no `/hr` slash command |
 
-> **In short:** tell the agent what you want, don't type a slash command.
-> The agent decides when to use the plugin tools.
-
-### Using the tools in a Hermes session
-
-Once the plugin is enabled and you've started a new session (`/reset`), just
-tell Hermes in plain language:
-
-> "Use the free pool to translate this: Hello → French"
-
-Hermes will see `hr_route` is available and call it as needed. You can also
-be explicit:
-
-> "Run `hr_doctor` to check my providers"
-> "Show me `hr_models` with only free providers"
-> "Route this through the paid pool: Write a React component"
-
-### Where things live
-
-| What | Installed at | How to use it |
-|---|---|---|
-| **CLI** (`hr`) | `~/.local/bin/hr` (symlink) | Type `hr route`, `hr doctor`, `hr models` in your terminal |
-| **Project** | `~/.hermes/hermes-router/` | Contains `.venv/`, `config.yaml`, source code |
-| **Plugin** (Hermes Agent) | `~/.hermes/plugins/hermes-router/` | Installed by `install.py`, enable with `hermes plugins enable hermes-router` |
-| **Plugin tools** | Loaded by Hermes at session start | Say "hr_doctor" to the agent — no `/hr` commands |
-
-The CLI (`hr` in your terminal) and the plugin tools (`hr_route` etc. inside
-Hermes) use the **same engine** — same config, same keys, same venv. The
-difference is just how you reach it.
+> **In short:** tell the agent what you want in plain language, don't type
+> a slash command. The agent decides when to use the plugin tools.
 
 ### What the plugin shares with Hermes
 
@@ -237,7 +277,11 @@ difference is just how you reach it.
 - **Config** — hermes-router reads `config.yaml` from its own project dir
 - **venv** — the `.venv/` inside `~/.hermes/hermes-router/.venv/`
 
-### Uninstall
+The CLI (`hr` in your terminal) and the plugin tools (`hr_route` etc. inside
+Hermes) use the **same engine** — same config, same keys, same venv. The
+difference is just how you reach it.
+
+### Uninstall the plugin
 
 ```bash
 hermes plugins disable hermes-router        # disable without removing
@@ -246,11 +290,13 @@ hermes plugins remove hermes-router         # delete the plugin entirely
 
 ---
 
-## 📦 Install
+## 📦 Alternative install methods
+
+### Via git clone
 
 ```bash
-git clone https://github.com/jphermans/hermes-router.git
-cd hermes-router
+git clone https://github.com/jphermans/hermes-router-cli.git
+cd hermes-router-cli
 python3 install.py                  # 🚀 colour output, full setup
 ```
 
@@ -265,7 +311,7 @@ That single command does everything:
 
 It's **idempotent** — running it again detects existing state and skips the work.
 
-### 🛠️ Other install styles
+### Install flags
 
 ```bash
 python3 install.py --no-color      # 📄 plain text (or set NO_COLOR=1)
@@ -274,37 +320,48 @@ python3 install.py --no-plugin     # 🧩 skip Hermes plugin install
 python3 install.py --no-doctor     # 🩺 skip the post-install health check
 ```
 
-If you'd rather not use the installer:
+### Manual install (no installer)
 
 ```bash
-cd hermes-router
+cd hermes-router-cli
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ln -s "$(pwd)/hr" ~/.local/bin/hr   # optional — for `hr` on PATH
 ```
 
+### Bootstrap flags (for the curl one-liner)
+
+```bash
+# Pin to a specific commit for reproducibility
+python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)" \
+  -- --ref 38abc1a
+
+# Install to a custom location
+python3 -c "$(curl -fsSL ...)" -- --prefix ~/my-custom-path
+```
+
+Everything after `--` goes straight to `install.py`.
+
 ---
 
 ## 🗑️ Uninstall
 
-The same script uninstalls too. By design it's conservative — it won't delete
-the project, your config, or your `.venv/` unless you ask for it.
+### Remove everything
+
+```bash
+hermes plugins disable hermes-router      # 1. disable the Hermes plugin
+hermes plugins remove hermes-router       # 2. remove it entirely
+rm -f ~/.local/bin/hr                     # 3. remove the CLI symlink
+rm -rf ~/.hermes/hermes-router             # 4. delete the project
+```
+
+### Via the installer script
 
 ```bash
 python3 install.py uninstall --dry-run       # 👀 see what would be removed
 python3 install.py uninstall                 # 🗑️  remove ~/.local/bin/hr (interactive confirm)
-python3 install.py uninstall --yes --purge    # 🔥 also delete ./venv/ (no venv left behind)
+python3 install.py uninstall --yes --purge   # 🔥 also delete .venv/ (no venv left behind)
 ```
-
-What gets removed, in order:
-
-| # | Target | When | Safety |
-|---|---|---|---|
-| 1️⃣ | `~/.local/bin/hr` | always — if it points at this project | Skips foreign symlinks; skips regular files; checks resolve target |
-| 2️⃣ | `./venv/` | only with `--purge` | Venv is preserved by default (re-installing is the slow step) |
-| 3️⃣ | project dir | only with `--purge-project`, never from inside cwd | "**This is the nuclear option.**" |
-
-Re-running is safe: missing items are reported and skipped.
 
 ---
 
@@ -329,7 +386,7 @@ export HERMES_ENV_FILE=/etc/hermes/keys.env       # 🏠  default: ~/.hermes/.en
 export HERMES_AUTH_FILE=/etc/hermes/auth.json     # 📋  default: ~/.hermes/auth.json
 ```
 
-### 🔧 Configure your API keys manually
+### Configure your API keys manually
 
 If you don't use `hermes auth add`, you can set them yourself. Pick whichever
 form fits you — all three work and merge automatically:
@@ -349,9 +406,9 @@ hr auth --show         # 🔓 show last-4 of each key
 
 ---
 
-## 🎯 Usage
+## 🎯 Usage reference
 
-### 🔍 Dry-run — see the plan, spend nothing
+### Dry-run — see the plan, spend nothing
 
 ```bash
 hr route --prompt "Translate 'hello' to French" --dry-run --pretty
@@ -370,7 +427,7 @@ The `class` column tells you which pool each candidate comes from.
 `$0.000000` free models always rank above priced ones because cost dominates
 the sort.
 
-### 🤖 Real call
+### Real call
 
 ```bash
 hr route --prompt "Translate 'hello' to French" --pretty
@@ -382,7 +439,7 @@ hr route --prompt "Translate 'hello' to French" --pretty
 "Bonjour."
 ```
 
-### 🎯 Choose the pool explicitly
+### Choose the pool explicitly
 
 ```bash
 hr route --prompt "Summarize this PDF" --class free --tier standard   # 🟢 free pool only
@@ -394,7 +451,7 @@ hr route --prompt "Quick translation" --class any --tier cheap       # 🌐 chea
 `--tier` overrides the heuristic classifier (`cheap` / `standard` / `pro`).
 `--class` selects the pool.
 
-### 👁 Vision prompts
+### Vision prompts
 
 ```bash
 hr route --prompt "What's in this image?" --image https://.../photo.jpg --pretty     # 🌍 URL
@@ -404,7 +461,7 @@ hr route --prompt "OCR this" --vision --image data:image/png;base64,...         
 The router only sends vision prompts to `vision: true` models. The same
 `--class free|paid|any` filter applies within the vision pool.
 
-### 🧰 Other sub-commands
+### Sub-commands
 
 | Command | What it does |
 |---|---|
@@ -576,7 +633,7 @@ This exercises:
   `budget`, `chat`) including `--pretty`, `--dry-run`,
   `--class free|paid|any`, and key-masking in `hr auth`.
 
-### 🧬 Live integration test against a fake server
+### Live integration test against a fake server
 
 ```bash
 # Terminal 1: a tiny test server that always returns 200
