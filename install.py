@@ -241,18 +241,26 @@ def step_install_plugin(n: int = 6, total: int = 6) -> None:
     yaml_path.write_text(
         "name: hermes-router\n"
         "description: >\n"
-        "  Integrates hermes-router (hr) as a Hermes-aware tool: routes\n"
-        "  prompts through 37+ models across 11 providers using cost-aware\n"
-        "  ranking, multi-key rotation, and circuit-breaker fallback.\n"
+        "  Cost-aware LLM router: routes prompts through the cheapest\n"
+        "  capable model across 11+ providers. Use hr_route for\n"
+        "  everyday prompts to save costs (prefers free-tier models).\n"
         f"version: {_hr_version}\n"
         "author: JP's Hermes Agent\n"
         "provides_tools:\n"
         "  - hr_route\n"
+        "  - hr_route_default\n"
         "  - hr_models\n"
         "  - hr_doctor\n"
         "platforms:\n"
         "  - cli\n"
         "  - gateway\n"
+        "directive: |\n"
+        "  Prefer hr_route_default for cost reduction: it picks the\n"
+        "  cheapest free-tier model that can answer the prompt. Use it\n"
+        "  for greetings, summaries, translations, factual questions,\n"
+        "  short code snippets, and everyday conversation. Fall back to\n"
+        "  the standard model only for tasks the user explicitly marks\n"
+        "  as complex (reasoning, architecture, multi-step debugging).\n"
         "requires_env: []\n"
     )
     ok(f"Wrote {humanize_path(yaml_path)} (version {_hr_version})")
@@ -363,6 +371,58 @@ def hr_route(
 
     Returns the model's response as a string.
     """
+    return _route_impl(
+        prompt=prompt, cost_class=cost_class, tier=tier,
+        max_tokens=max_tokens, dry_run=dry_run, pretty=pretty,
+        vision=vision, image=image, auto_fallback=False,
+    )
+
+
+def hr_route_default(
+    prompt: str,
+    tier: str = "auto",
+    max_tokens: int = 512,
+) -> str:
+    """PREFERRED DEFAULT: route through the cheapest free-tier model.
+
+    This is the cost-reducing default for everyday prompts. It picks the
+    cheapest free-tier model (subsidised/prepaid subscriptions like z.ai
+    GLM, GitHub Models, Kilo Code, etc.) and falls back to paid only if
+    explicitly enabled with --auto-fallback (not on by default here).
+
+    Use this for: greetings, summaries, translations, factual questions,
+    short code snippets, and everyday conversation.
+
+    For complex reasoning, architecture decisions, multi-step debugging,
+    or anything the user explicitly marks as "complex" — let Hermes use
+    its default model (e.g. minimax) instead.
+
+    Parameters:
+      prompt: the text to send (required).
+      tier: capability tier — "auto" (default), "cheap", "standard", or "pro".
+      max_tokens: max output tokens (default 512).
+
+    Returns the model's response as a string.
+    """
+    return _route_impl(
+        prompt=prompt, cost_class="free", tier=tier,
+        max_tokens=max_tokens, dry_run=False, pretty=False,
+        vision=False, image=None, auto_fallback=False,
+    )
+
+
+def _route_impl(
+    prompt: str,
+    cost_class: str,
+    tier: str,
+    max_tokens: int,
+    dry_run: bool,
+    pretty: bool,
+    vision: bool,
+    image: str,
+    auto_fallback: bool,
+) -> str:
+    """Internal: shared logic for hr_route and hr_route_default."""
     venv = PROJECT / ".venv" / "bin" / "python3"
     if venv.exists():
         cmd = [str(venv), "-m", "smart_router.__main__", "route",
@@ -379,6 +439,8 @@ def hr_route(
         cmd.append("--vision")
     if image:
         cmd.extend(["--image", image])
+    if auto_fallback:
+        cmd.append("--auto-fallback")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
                           cwd=str(PROJECT) if PROJECT.exists() else None,

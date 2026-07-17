@@ -26,9 +26,22 @@ can call). Same engine, different surfaces.
 
 ---
 
+## 🎉 What's new in 2.1
+
+hermes-router 2.1 makes the agent **automatically route everyday prompts
+through the cheapest free-tier model** — no need to ask "route this
+through the free pool" anymore.
+
+| Feature | How it works |
+|---------|---------------|
+| **Hybrid routing** — automatic cost reduction | New `hr_route_default` tool + plugin directive. Hermes uses it for greetings, summaries, translations, short code, factual Q&A — saving money on every routine turn. Complex tasks still use Hermes's default model (e.g. minimax). |
+| **`hr_route_default(prompt, tier, max_tokens)`** | New tool that wraps `hr_route --class free` with sensible defaults. Picked automatically by the agent. |
+| **Plugin directive** | A `directive:` field in `plugin.yaml` tells Hermes when to prefer the cheap router. |
+| **Clean uninstall** | No `~/.hermes/config.yaml` modifications — uninstall is a single step that reverts to Hermes's default. |
+
 ## 🎉 What's new in 2.0
 
-hermes-router 2.0 is a major release. The CLI now offers:
+hermes-router 2.0 was the previous major release. The CLI now offers:
 
 | Feature | Command / flag |
 |---------|---------------|
@@ -278,9 +291,43 @@ what you want in natural language.
 
 | Tool | What it does | When to use |
 |---|---|---|
-| `hr_route(prompt, cost_class, tier, ...)` | Routes a prompt through the cheapest capable model | "Route this through the free pool" |
+| `hr_route_default(prompt, tier, max_tokens)` | **PREFERRED DEFAULT** — routes through cheapest free-tier model. Hermes uses this automatically for everyday prompts (greetings, summaries, translations, short code, factual Q&A) | "Just talk to me" — saves cost on every routine turn |
+| `hr_route(prompt, cost_class, tier, ...)` | Routes a prompt with explicit cost_class / tier / vision / max-cost options | "Route this through the paid pool", "vision prompt", "max $0.01 on this call" |
 | `hr_models(cost_class, tier)` | Lists available models across all providers | "Which free models do I have?" |
 | `hr_doctor()` | Health check — providers, keys, config | "Is everything working?" |
+
+### Hybrid routing — automatic cost reduction
+
+The plugin now ships a **directive** in `plugin.yaml` that tells Hermes
+to prefer `hr_route_default` for everyday conversation. This is the
+**hybrid** behavior:
+
+- **Simple / routine prompts** (greetings, summaries, translations,
+  factual Q&A, short code snippets) → Hermes calls `hr_route_default`
+  → routes through the cheapest free-tier model (e.g. GitHub Models,
+  Kilo, z.ai GLM Coding Plan). **You pay $0.**
+- **Complex tasks** the user explicitly marks as reasoning,
+  architecture, multi-step debugging → Hermes uses its default
+  model (e.g. `minimax`).
+
+You don't need to say "route this through the free pool" anymore — the
+agent picks automatically. You can still force specific routing with
+`hr_route` when you want to override.
+
+### Uninstall is clean — no config changes to revert
+
+Because the plugin only adds tools + a directive (it does **not**
+modify `~/.hermes/config.yaml`), uninstall is a single clean step:
+
+```bash
+hermes plugins disable hermes-router
+hermes plugins remove hermes-router
+rm -f ~/.local/bin/hr
+rm -rf ~/.hermes/hermes-router
+```
+
+Hermes automatically reverts to its standard model — nothing to undo in
+`config.yaml`.
 
 ### How to use it — chat examples
 
