@@ -119,12 +119,23 @@ python3 -c "$(curl -fsSL ...)" -- --no-symlink --no-color
 1. ⬇️ Downloads the latest tarball from `codeload.github.com/<repo>/tar.gz/main`
 1. 🔐 Verifies SHA-256 (when `--sha=` is provided; otherwise warns with the digest)
 1. 📦 Extracts the tarball into a temp dir
-1. 📂 Moves the extracted project to `--prefix` (default: `.`)
+1. 📂 Moves the extracted project to `--prefix` (default: current directory `.`)
 1. 🚀 Runs `install.py install` from that prefix, forwarding all extra args
 1. 🧹 Cleans up the temp dir
 
 The result is a fully installed hermes-router project directory with a
 working `.venv/` inside it, ready to use.
+
+> **Where does it install?** By default, the project is extracted into your
+> **current working directory** (the folder you're in when you run the curl
+> command). Cd to where you want it first, e.g.:
+>
+> ```bash
+> cd ~/projects          # 👈 choose your install location
+> python3 -c "$(curl -fsSL ...)"
+> ```
+>
+> Use `--prefix` to override: `--prefix ~/my-custom-location`.
 
 ---
 
@@ -147,7 +158,9 @@ access to `hr_route`, `hr_models`, and `hr_doctor` as native Hermes tools.
 
 ### Install
 
-The plugin lives in `~/.hermes/plugins/hermes-router/` and must be enabled:
+The plugin lives in `~/.hermes/plugins/hermes-router/` and is automatically
+created by `install.py` (included in the default install; skip with
+`--no-plugin`). Enable it with:
 
 ```bash
 hermes plugins enable hermes-router        # ✅ enable after install
@@ -156,7 +169,8 @@ hermes plugins list | grep hermes-router    # should show "enabled"
 
 After enabling, start a **new Hermes session** (`/reset` in chat, or exit and
 re-launch). The three tools — `hr_route`, `hr_models`, `hr_doctor` — will
-appear in Hermes' tool list (`hermes tools list`).
+appear in Hermes' tool list. The plugin is **auto-generated** with the
+correct project path for your machine — no hardcoded paths.
 
 ### Available tools
 
@@ -202,8 +216,8 @@ be explicit:
 | What | Installed at | How to use it |
 |---|---|---|
 | **CLI** (`hr`) | `~/.local/bin/hr` (symlink) | Type `hr route`, `hr doctor`, `hr models` in your terminal |
-| **Project** | `/home/jphermans/documents/hermes-router/` | Contains `.venv/`, `config.yaml`, source code |
-| **Plugin** (Hermes Agent) | `~/.hermes/plugins/hermes-router/` | Enabled with `hermes plugins enable hermes-router` |
+| **Project** | `./hermes-router/` (where you ran the install) | Contains `.venv/`, `config.yaml`, source code |
+| **Plugin** (Hermes Agent) | `~/.hermes/plugins/hermes-router/` | Installed by `install.py`, enable with `hermes plugins enable hermes-router` |
 | **Plugin tools** | Loaded by Hermes at session start | Say "hr_doctor" to the agent — no `/hr` commands |
 
 The CLI (`hr` in your terminal) and the plugin tools (`hr_route` etc. inside
@@ -214,7 +228,7 @@ difference is just how you reach it.
 
 - **API keys** — same `~/.hermes/.env` (set once, works for both)
 - **Config** — hermes-router reads `config.yaml` from its own project dir
-- **venv** — the `.venv/` inside `/home/jphermans/documents/hermes-router/`
+- **venv** — the `.venv/` inside the project directory (e.g. `./hermes-router/.venv/`)
 
 ### Uninstall
 
@@ -239,6 +253,7 @@ That single command does everything:
 1. 📚 **Installs PyYAML** into it
 1. 🔓 **Marks `hr` executable**
 1. 🔗 **Symlinks `~/.local/bin/hr`** so `hr` works from anywhere on your PATH
+1. 🧩 **Installs the Hermes plugin** (`~/.hermes/plugins/hermes-router/`) — skip with `--no-plugin`
 1. 🩺 **Runs `hr doctor`** and prints a colourised health report
 
 It's **idempotent** — running it again detects existing state and skips the work.
@@ -248,6 +263,7 @@ It's **idempotent** — running it again detects existing state and skips the wo
 ```bash
 python3 install.py --no-color      # 📄 plain text (or set NO_COLOR=1)
 python3 install.py --no-symlink    # 🔓 skip ~/.local/bin
+python3 install.py --no-plugin     # 🧩 skip Hermes plugin install
 python3 install.py --no-doctor     # 🩺 skip the post-install health check
 ```
 
