@@ -5,7 +5,7 @@ Why this exists:
   A single, copy-pasteable one-liner to install hermes-router without
   needing git clone first:
 
-    python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
+    python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/38abc1a/bootstrap-install.py)"
 
   Installs into ~/.hermes/hermes-router/ by default (alongside Hermes'
   own config and plugins).
@@ -39,7 +39,7 @@ import urllib.request
 
 # Default config -- overridable via flags.
 DEFAULT_REPO = "jphermans/hermes-router-cli"
-DEFAULT_REF = "main"
+DEFAULT_REF = "38abc1ad08e946568a7ecfe20e4d8a5a83846e2e"
 ARCHIVE_URL = "https://codeload.github.com/{repo}/tar.gz/{ref}"
 
 
