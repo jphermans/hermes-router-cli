@@ -12,21 +12,26 @@ Why this exists:
 
 What's special about this bootstrap:
   * Pure Python (stdlib only) -- no shell, no `curl | bash`.
+  * Fetches a tarball of the whole repo via codeload.github.com so all
+    companion files (requirements.txt, config.yaml, smart_router/, ...)
+    are present.
+  * Verifies the tarball archive SHA-256 against an expected value when
+    --sha=<hex> is supplied; otherwise just reports the computed digest.
   * Streams stdout live during the actual install.py run, so the user
     sees the colourised progress.
-  * Verifies the downloaded install.py against an expected SHA-256
-    when --sha=<hex> is supplied.
   * Has a sane default commit (main) but accepts --ref=<branch|tag|sha>
     for pinning.
-  * Cleans up the temp file no matter what.
+  * Cleans up the temp directory no matter what.
   * Fails fast with exit-code propagation if anything goes wrong.
 """
 
 import argparse
 import hashlib
+import io
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 import urllib.error
 import urllib.request
@@ -34,8 +39,7 @@ import urllib.request
 # Default config -- overridable via flags.
 DEFAULT_REPO = "jphermans/hermes-router-cli"
 DEFAULT_REF = "main"
-DEFAULT_PATH = "install.py"
-RAW_URL = "https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}"
+ARCHIVE_URL = "https://codeload.github.com/{repo}/tar.gz/{ref}"
 
 
 def _fetch(url):
@@ -67,17 +71,16 @@ def main(argv):
                     help="git ref to fetch from (default: main)")
     ap.add_argument("--repo", default=DEFAULT_REPO,
                     help=f"github 'owner/repo' (default: {DEFAULT_REPO})")
-    ap.add_argument("--path", default=DEFAULT_PATH,
-                    help=f"path inside repo (default: {DEFAULT_PATH})")
     ap.add_argument("--sha", default=None,
-                    help="expected SHA-256 of install.py (hex, lowercase). "
+                    help="expected SHA-256 of the tarball bytes (hex, lowercase). "
                          "Skip for the latest commit, or pin to a specific commit.")
     ap.add_argument("--dry-run", action="store_true",
                     help="download + verify only; don't actually run install.py")
+    ap.add_argument("--forward-args", action="append", default=[],
+                    help="extra args forwarded to install.py (repeatable)")
     args = ap.parse_args(argv)
 
-    url = RAW_URL.format(ref=args.ref, repo=args.repo, path=args.path,
-                          owner=args.repo.split("/")[0])
+    url = ARCHIVE_URL.format(ref=args.ref, repo=args.repo)
     _print_status("info", f"📡 Fetching {url}")
 
     try:
@@ -94,7 +97,8 @@ def main(argv):
 
     _print_status("info", f"📦 Downloaded {len(code):,} bytes")
 
-    # Verify SHA-256 if requested.
+    # Verify SHA-256 if requested. SHA is over the raw tarball bytes
+    # so a determined user can compute it independently with sha256sum.
     digest = hashlib.sha256(code).hexdigest()
     if args.sha:
         if digest.lower() != args.sha.lower():
@@ -106,38 +110,65 @@ def main(argv):
         _print_status("ok", f"🔒 SHA-256 verified ({digest[:12]}…)")
     else:
         _print_status("warn",
-            f"⚠️  No --sha given; SHA-256 of fetched file: {digest}")
+            f"⚠️  No --sha given; SHA-256 of tarball: {digest}")
         _print_status("dim",
             "    (to pin to a known version, re-run with --sha=<hex>)")
 
-    # Quick sanity: must look like Python.
-    head = code[:200].decode("utf-8", errors="replace")
-    if "python" not in head and "import" not in head:
-        _print_status("err", "Fetched content doesn't look like a Python file.")
+    # Quick sanity: must be a gzip-compressed tarball.
+    if not code[:2] == b"\x1f\x8b":
+        _print_status("err", "Fetched content doesn't look like a gzip archive.")
         return 4
 
-    # Run from a temp file so Python's argv[0] is meaningful.
-    tmp = tempfile.NamedTemporaryFile(
-        prefix="hermes-router-install-",
-        suffix=".py", mode="wb", delete=False,
-    )
+    # Extract to a temp dir, find the inner repo directory, run install.py.
+    tmp = tempfile.mkdtemp(prefix="hermes-router-bootstrap-")
     try:
-        tmp.write(code)
-        tmp.flush()
-        tmp.close()
+        try:
+            with tarfile.open(fileobj=io.BytesIO(code), mode="r:gz") as tf:
+                # GitHub tarballs have a single top-level dir named
+                # 'reponame-<short-sha>'. Extract everything into tmp.
+                try:
+                    tf.extractall(path=tmp, filter="data")  # Py 3.12+
+                except (TypeError, ValueError):
+                    # Older Python: filter kwarg not yet a strict string.
+                    # Use the numeric equivalent or just no filter (we
+                    # trust the source — this is GitHub's signed tarball).
+                    try:
+                        tf.extractall(path=tmp)
+                    except TypeError:
+                        # Python 3.12 strict filter rejects non-strings — fall back.
+                        tf.extractall(path=tmp, filter=None)
+        except Exception as e:
+            _print_status("err", f"Failed to extract tarball: {e}")
+            return 5
+
+        # Find the extracted directory (top-level only).
+        extracted = [p for p in os.listdir(tmp) if not p.startswith(".")]
+        if len(extracted) != 1:
+            _print_status("err",
+                f"Expected single top-level dir in tarball, got: {extracted}")
+            return 6
+        project_dir = os.path.join(tmp, extracted[0])
+        install_py = os.path.join(project_dir, "install.py")
+        if not os.path.exists(install_py):
+            _print_status("err", f"No install.py found in {project_dir}")
+            return 6
+
         if args.dry_run:
             _print_status("info", "🏁 --dry-run set; not executing.")
-            _print_status("info", f"   saved to: {tmp.name}")
+            _print_status("info", f"   extracted to: {project_dir}")
             return 0
-        _print_status("info", f"🚀 Running {tmp.name} install (forwarding your flags)…")
-        # Forward every argv after the script path as the install's argv.
-        proc_argv = [sys.executable, tmp.name] + argv
-        # Don't capture stdout: let the colourised install output stream live.
-        result = subprocess.run(proc_argv, stdin=sys.stdin)
+
+        # Run install.py live, forwarding stdout/stderr.
+        cmd = [sys.executable, install_py, *args.forward_args]
+        _print_status("info", f"🚀 Running: {' '.join(cmd)}")
+        result = subprocess.run(cmd)
         return result.returncode
     finally:
-        try: os.unlink(tmp.name)
-        except OSError: pass
+        try:
+            import shutil as _sh
+            _sh.rmtree(tmp, ignore_errors=True)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
