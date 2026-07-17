@@ -9,9 +9,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 [![Providers](https://img.shields.io/badge/providers-11-2ea44f)](config.yaml)
 [![Models](https://img.shields.io/badge/models-37-2ea44f)](config.yaml)
-[![Sub-commands](https://img.shields.io/badge/subcommands-7-blue)](#-usage)
+[![Sub-commands](https://img.shields.io/badge/subcommands-8-blue)](#-usage)
 [![Tests](https://img.shields.io/badge/tests-28%20passing-brightgreen)](tests/)
-[![Plugin](https://img.shields.io/badge/Hermes%20Plugin-1.0.0-8A2BE2)](#-hermes-agent-plugin)
+[![Plugin](https://img.shields.io/badge/Hermes%20Plugin-2.0.0-8A2BE2)](#-hermes-agent-plugin)
 [![Cost](https://img.shields.io/badge/$0%2Ftoken-free%20pool-2ea44f)](#-free-vs-paid--the-one-knob)
 
 A Python CLI that **routes any prompt to the cheapest LLM that can answer it**,
@@ -23,6 +23,28 @@ Comes in two flavours: a **standalone CLI** (`hr` — for your terminal) and a
 can call). Same engine, different surfaces.
 
 </div>
+
+---
+
+## 🎉 What's new in 2.0
+
+hermes-router 2.0 is a major release. The CLI now offers:
+
+| Feature | Command / flag |
+|---------|---------------|
+| **Auto-fallback** (free → paid) | `hr route --auto-fallback` |
+| **Per-provider fallback chains** | `policy.fallback_chains` in config.yaml |
+| **Model blacklist / prefer** | `policy.model_filters` in config.yaml |
+| **Verbose health check** | `hr doctor --verbose` |
+| **Parallel fallback** (3 candidates) | `policy.parallel_timeout` in config.yaml |
+| **Per-call cost cap** | `hr route --max-cost 0.01` |
+| **Session cost tracking** | `hr chat --show-cost` |
+| **Interactive setup wizard** | `hr init` |
+| **Rich `--help`** with colors + icons | `hr --help` |
+| **New sub-command** | `hr init` (8 total now) |
+
+Backward compatible with v1.0 configs — old `zai_fallback_chain` is
+auto-merged into `fallback_chains: {zai: ...}`.
 
 ---
 
