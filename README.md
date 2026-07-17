@@ -706,7 +706,7 @@ router estimates input tokens at ~4 chars/token.
 ✗ PyYAML installed  PyYAML is required to parse config.yaml.
 ```
 
-De venv/ is niet correct ingesteld. Fix:
+The `.venv/` isn't set up correctly. Fix it:
 
 ```bash
 cd ~/.hermes/hermes-router
@@ -715,66 +715,66 @@ python3 install.py --no-symlink
 
 ### `hr: command not found`
 
-De symlink in `~/.local/bin/` ontbreekt of `~/.local/bin/` staat niet op je PATH.
+The symlink in `~/.local/bin/` is missing, or `~/.local/bin/` isn't on your `PATH`.
 
 ```bash
-# Check of de symlink bestaat
+# Check whether the symlink exists
 ls -la ~/.local/bin/hr
 
-# Zo niet, maak hem aan:
+# If not, create it:
 ln -s ~/.hermes/hermes-router/hr ~/.local/bin/hr
 
-# Voeg ~/.local/bin toe aan PATH (in ~/.bashrc of ~/.zshrc):
+# Add ~/.local/bin to PATH (in ~/.bashrc or ~/.zshrc):
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### "Unknown command" bij `/hr doctor` in Hermes chat
+### "Unknown command" for `/hr doctor` in Hermes chat
 
-De plugin voegt **tools** toe, geen **slash commands**. Zeg gewoon "Run hr_doctor" in de chat — geen `/hr doctor`.
+The plugin adds **tools**, not **slash commands**. Just say "Run hr_doctor" in chat — don't type `/hr doctor`.
 
-Als de plugin tools niet verschijnen: check of de plugin enabled is (`hermes plugins list | grep hermes-router`) en stuur `/reset` in de chat om een nieuwe sessie te starten.
+If the plugin tools don't appear, check whether the plugin is enabled (`hermes plugins list | grep hermes-router`) and send `/reset` in chat to start a new session.
 
-### Alle providers falen met 401 (unauthorized)
+### All providers fail with 401 (unauthorized)
 
-Je API keys zijn niet (correct) ingesteld. Check met:
+Your API keys are not (correctly) configured. Check with:
 
 ```bash
 hr auth
 ```
 
-Keys moeten in `~/.hermes/.env` staan. Bijv.:
+Keys need to live in `~/.hermes/.env`. For example:
 
 ```bash
-echo "GLM_API_KEY=sk-your-key-here" >> ~/.hermes/.env
-echo "OPENROUTER_API_KEY=sk-your-key-here" >> ~/.hermes/.env
+echo "GLM_API_KEY=sk-..." >> ~/.hermes/.env
+echo "OPENROUTER_API_KEY=sk-..." >> ~/.hermes/.env
 ```
 
-### Free pool faalt: "no free-tier candidates"
+### Free pool fails: "no free-tier candidates"
 
-Niet alle providers hebben een free tier. Check of je minstens één free provider hebt met keys:
+Not all providers have a free tier. Check whether you have at least one free provider with keys:
 
 ```bash
 hr doctor
 hr auth | grep free
 ```
 
-Providers zoals z.ai (GLM Coding Plan), Kilo Code, GitHub Models, en Gemini free hebben free tiers.
+Providers like z.ai (GLM Coding Plan), Kilo Code, GitHub Models, and Gemini free do have free tiers.
 
-### `hr route --class free` gebruikt een paid model
+### `hr route --class free` picks a paid model
 
-Dat kan niet — `--class free` filtert strikt op free modellen. Als je een paid model ziet in `--dry-run`, dan heeft die provider `cost_class: free` in config.yaml maar het model zelf heeft `cost_class: paid`. Check met `hr doctor --verbose`.
+That can't happen — `--class free` filters strictly to free models. If you see a paid model in `--dry-run`, the provider has `cost_class: free` in `config.yaml` but the model itself has `cost_class: paid`. Check with `hr doctor --verbose`.
 
-### Router is traag / timeout
+### Router is slow / timeout
 
-De nieuwe parallelle fallback probeert de eerste 3 kandidaten tegelijk. Als dat nog te traag is:
+The new parallel fallback tries the first 3 candidates simultaneously. If that's still too slow:
 
 ```bash
-# Verlaag de parallel timeout in config.yaml:
+# Lower the parallel timeout in config.yaml:
 # policy.parallel_timeout: 10
 ```
 
-Of gebruik `--dry-run` om te zien welke providers geprobeerd worden.
+Or use `--dry-run` to see which providers would be tried.
 
 
 
