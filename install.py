@@ -228,32 +228,34 @@ def step_install_plugin(n: int = 6, total: int = 6) -> None:
 
     # ── plugin.yaml (static) ─────────────────────────────────────────────
     yaml_path = plugin_dir / "plugin.yaml"
-    if not yaml_path.exists():
-        # Pull the version dynamically so plugin.yaml always matches
-        # smart_router.__version__. Falls back to "2.0.0" if the import
-        # fails (e.g. during a fresh install before .venv is ready).
-        try:
-            from smart_router import __version__ as _hr_version
-        except Exception:
-            _hr_version = "2.0.0"
-        yaml_path.write_text(
-            "name: hermes-router\n"
-            "description: >\n"
-            "  Integrates hermes-router (hr) as a Hermes-aware tool: routes\n"
-            "  prompts through 37+ models across 11 providers using cost-aware\n"
-            "  ranking, multi-key rotation, and circuit-breaker fallback.\n"
-            f"version: {_hr_version}\n"
-            "author: JP's Hermes Agent\n"
-            "provides_tools:\n"
-            "  - hr_route\n"
-            "  - hr_models\n"
-            "  - hr_doctor\n"
-            "platforms:\n"
-            "  - cli\n"
-            "  - gateway\n"
-            "requires_env: []\n"
-        )
-        ok(f"Created {humanize_path(yaml_path)}")
+    # Pull the version dynamically so plugin.yaml always matches
+    # smart_router.__version__. Falls back to "2.0.0" if the import
+    # fails (e.g. during a fresh install before .venv is ready).
+    try:
+        from smart_router import __version__ as _hr_version
+    except Exception:
+        _hr_version = "2.0.0"
+    # Always write (or overwrite) so the plugin version stays in sync
+    # with the actual code version. Old versions of plugin.yaml will
+    # be replaced with the current version.
+    yaml_path.write_text(
+        "name: hermes-router\n"
+        "description: >\n"
+        "  Integrates hermes-router (hr) as a Hermes-aware tool: routes\n"
+        "  prompts through 37+ models across 11 providers using cost-aware\n"
+        "  ranking, multi-key rotation, and circuit-breaker fallback.\n"
+        f"version: {_hr_version}\n"
+        "author: JP's Hermes Agent\n"
+        "provides_tools:\n"
+        "  - hr_route\n"
+        "  - hr_models\n"
+        "  - hr_doctor\n"
+        "platforms:\n"
+        "  - cli\n"
+        "  - gateway\n"
+        "requires_env: []\n"
+    )
+    ok(f"Wrote {humanize_path(yaml_path)} (version {_hr_version})")
 
     # ── __init__.py (generated from template — embeds PROJECT path) ──────
     init_path = plugin_dir / "__init__.py"
