@@ -143,7 +143,8 @@ inside a session). Now you can use it from chat — see the plugin section below
 | **CLI** (`hr`) | `~/.local/bin/hr` → `~/.hermes/hermes-router/hr` | Type `hr route`, `hr doctor`, `hr models` in your terminal |
 | **Project** | `~/.hermes/hermes-router/` | Contains `.venv/`, `config.yaml`, source code |
 | **Plugin** | `~/.hermes/plugins/hermes-router/` | Enabled with `hermes plugins enable hermes-router` |
-| **Plugin tools** | Loaded by Hermes at session start | Say "route this through the free pool" in chat |
+| **Plugin tools** | Loaded by Hermes at session start | Say "route this through the free pool" in CLI, Telegram, or any channel |
+| **Telegram** | No extra setup — works after `/reset` | Send "Run hr_doctor" or "Route this through the free pool" |
 
 ---
 
@@ -255,6 +256,27 @@ tell Hermes what you want. Here are real examples:
 > **You:** `/hr doctor`
 >
 > **Hermes:** ❌ Unknown command
+
+### Using from Telegram
+
+The plugin works on **Telegram too** — no extra setup. Just make sure you've
+enabled the plugin (`hermes plugins enable hermes-router`) and then send a
+message on Telegram. The tools are available on every channel Hermes runs on.
+
+**Important:** if you enabled the plugin while a Telegram session was already
+active, send `/reset` (or `/new`) first so Hermes reloads its tools. After
+that, just talk normally:
+
+| You type in Telegram... | What happens |
+|---|---|
+| `Run hr_doctor` | Hermes calls `hr_doctor()` and replies with the health report |
+| `Route 'vertaal hallo naar Frans' door de free pool` | Hermes calls `hr_route()` and returns the translation |
+| `Which free models do I have?` | Hermes calls `hr_models()` and lists them |
+| `Schrijf een Python script om een JSON bestand te lezen, betaalde pool` | Hermes calls `hr_route()` with `--class paid` |
+| `/hr doctor` | ❌ Unknown command — same as in the CLI, no `/hr` slash command |
+
+> **Tip:** need a fresh session? Send `/reset` in Telegram to reload tools.
+> The gateway restarts with `/restart`.
 
 ### Important: Tools ≠ Slash Commands
 
