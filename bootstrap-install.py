@@ -5,10 +5,10 @@ Why this exists:
   A single, copy-pasteable one-liner to install hermes-router without
   needing git clone first:
 
-    cd ~/projects   # pick where .hermes-router/ will appear
     python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
 
-  Creates a .hermes-router/ subdirectory in your current folder by default (hidden).
+  Installs into ~/.hermes/hermes-router/ by default (alongside Hermes'
+  own config and plugins).
 
 What's special about this bootstrap:
   * Pure Python (stdlib only) -- no shell, no `curl | bash`.
@@ -76,8 +76,8 @@ def main(argv):
                          "Skip for the latest commit, or pin to a specific commit.")
     ap.add_argument("--dry-run", action="store_true",
                     help="download + verify only; don't actually run install.py")
-    ap.add_argument("--prefix", default=".",
-                    help="target directory (default: ./.hermes-router/ — auto-creates a hidden subdir)")
+    ap.add_argument("--prefix", default=None,
+                    help="target directory (default: ~/.hermes/hermes-router/)")
     # Everything after `--` is forwarded as a single shell-style argv list
     # to install.py. argparse's `nargs='+'` is too clunky for this.
     # Split argv at '--': everything before is for us, everything after
@@ -173,20 +173,16 @@ def main(argv):
         except Exception: pass
         return 6
 
-    # Determine target directory.
-    prefix = os.path.abspath(args.prefix)
-    # If --prefix is the default (current dir) and it already exists,
-    # auto-create a subdirectory 'hermes-router' so the user doesn't
-    # have to think about it. An explicit --prefix that already exists
-    # still errors out (safety).
-    is_default_prefix = args.prefix == "."
-    if os.path.exists(prefix) and is_default_prefix:
-        prefix = os.path.join(prefix, ".hermes-router")
-        _print_status("info", f"📁 Installing into {prefix}")
+    # Resolve target directory.
+    # Default: ~/.hermes/hermes-router/ (alongside Hermes' own config).
+    if args.prefix is None:
+        prefix = os.path.join(os.path.expanduser("~"), ".hermes", "hermes-router")
+    else:
+        prefix = os.path.abspath(args.prefix)
+    _print_status("info", f"📁 Installing into {prefix}")
     parent = os.path.dirname(prefix)
     os.makedirs(parent, exist_ok=True)
     if os.path.exists(prefix):
-        # An explicit --prefix that already exists — error.
         _print_status("err",
             f"--prefix directory already exists: {prefix}\n"
             "    Delete it first, or use a different --prefix.")
