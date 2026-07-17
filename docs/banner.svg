@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="1200" height="420" font-family="ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace">
+  <defs>
+    <!-- Background gradient -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <!-- Title gradient -->
+    <linearGradient id="title" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="60%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+    <!-- Glow blob -->
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Grid pattern -->
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#22d3ee" stroke-opacity="0.06" stroke-width="1"/>
+    </pattern>
+    <!-- Arrowheads -->
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Card background -->
+  <rect x="0" y="0" width="1200" height="420" rx="16" fill="url(#bg)" stroke="#1e293b" stroke-width="1.5"/>
+  <rect x="0" y="0" width="1200" height="420" rx="16" fill="url(#grid)"/>
+  <circle cx="1080" cy="60" r="180" fill="url(#glow)"/>
+
+  <!-- Pulsing dot -->
+  <circle cx="50" cy="50" r="7" fill="#22d3ee">
+    <animate attributeName="opacity" values="1;0.55;1" dur="2.4s" repeatCount="indefinite"/>
+    <animate attributeName="r" values="7;6;7" dur="2.4s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="50" cy="50" r="14" fill="none" stroke="#22d3ee" stroke-opacity="0.25">
+    <animate attributeName="r" values="7;18;7" dur="2.4s" repeatCount="indefinite"/>
+    <animate attributeName="stroke-opacity" values="0.4;0;0.4" dur="2.4s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Title -->
+  <text x="76" y="60" font-size="36" font-weight="800" fill="url(#title)" letter-spacing="-0.5">hermes-router</text>
+
+  <!-- Tagline -->
+  <text x="50" y="92" font-size="13" fill="#94a3b8">
+    <tspan fill="#22d3ee" font-weight="600">Cost-aware LLM router</tspan>
+    <tspan> · picks the cheapest capable model across </tspan>
+    <tspan fill="#fbbf24" font-weight="600">11 providers</tspan>
+    <tspan> and </tspan>
+    <tspan fill="#fbbf24" font-weight="600">37 models</tspan>
+    <tspan> · </tspan>
+    <tspan fill="#34d399" font-weight="600">free</tspan>
+    <tspan> or </tspan>
+    <tspan fill="#fbbf24" font-weight="600">paid</tspan>
+    <tspan> pool · one curl, two minutes, zero config.</tspan>
+  </text>
+
+  <!-- ====== Flow row ====== -->
+
+  <!-- Input pill -->
+  <g>
+    <rect x="50" y="135" width="220" height="84" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#94a3b8" stroke-width="1.5"/>
+    <text x="64" y="165" font-size="14" font-weight="700" fill="#e2e8f0">Your prompt</text>
+    <text x="64" y="186" font-size="10" fill="#94a3b8">CLI · Telegram · any channel</text>
+    <text x="64" y="204" font-size="10" fill="#94a3b8">"Translate hello to French"</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <line x1="278" y1="177" x2="328" y2="177" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Router pill (center) -->
+  <g>
+    <rect x="335" y="135" width="530" height="84" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#22d3ee" stroke-width="2"/>
+    <rect x="335" y="135" width="530" height="84" rx="12" fill="none" stroke="#22d3ee" stroke-opacity="0.15" stroke-width="6" filter="blur(2px)"/>
+    <text x="349" y="165" font-size="14" font-weight="700" fill="#22d3ee">🪶 hermes-router</text>
+    <text x="349" y="186" font-size="10" fill="#94a3b8">price-rank · tier-classify · fallback chain · fail-fast · circuit breaker</text>
+    <!-- stats chips -->
+    <rect x="349" y="194" width="80" height="18" rx="6" fill="#22d3ee" fill-opacity="0.1" stroke="#22d3ee" stroke-opacity="0.4" stroke-width="1"/>
+    <text x="389" y="207" font-size="10" font-weight="600" fill="#22d3ee" text-anchor="middle">🟢 21 free</text>
+    <rect x="435" y="194" width="80" height="18" rx="6" fill="#fbbf24" fill-opacity="0.1" stroke="#fbbf24" stroke-opacity="0.4" stroke-width="1"/>
+    <text x="475" y="207" font-size="10" font-weight="600" fill="#fbbf24" text-anchor="middle">🟡 16 paid</text>
+    <rect x="521" y="194" width="100" height="18" rx="6" fill="#a78bfa" fill-opacity="0.1" stroke="#a78bfa" stroke-opacity="0.4" stroke-width="1"/>
+    <text x="571" y="207" font-size="10" font-weight="600" fill="#a78bfa" text-anchor="middle">⚡ $0/token possible</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <line x1="873" y1="177" x2="923" y2="177" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Output pill -->
+  <g>
+    <rect x="930" y="135" width="220" height="84" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#34d399" stroke-width="2"/>
+    <text x="944" y="165" font-size="14" font-weight="700" fill="#34d399">Best answer</text>
+    <text x="944" y="186" font-size="10" fill="#94a3b8">cheapest model that meets the bar</text>
+    <text x="944" y="204" font-size="10" fill="#94a3b8">✓ zai/glm-4.5-air (~$0.000000)</text>
+  </g>
+
+  <!-- ====== Providers cloud ====== -->
+  <text x="50" y="260" font-size="10" fill="#475569" font-weight="600" letter-spacing="1.5">11 PROVIDERS · 37 MODELS WIRED UP</text>
+
+  <!-- Free pool chips -->
+  <g font-size="11" font-weight="500">
+    <g transform="translate(50,278)">
+      <rect width="92" height="26" rx="13" fill="#0f172a" fill-opacity="0.7" stroke="#34d399" stroke-opacity="0.35"/>
+      <circle cx="14" cy="13" r="3" fill="#34d399"/>
+      <text x="24" y="17" fill="#cbd5e1">z.ai GLM</text>
+    </g>
+    <g transform="translate(150,278)">
+      <rect width="100" height="26" rx="13" fill="#0f172a" fill-opacity="0.7" stroke="#34d399" stroke-opacity="0.35"/>
+      <circle cx="14" cy="13" r="3" fill="#34d399"/>
+      <text x="24" y="17" fill="#cbd5e1">Kilo Code</text>
+    </g>
+    <g transform="translate(258,278)">
+      <rect width="116" height="26" rx="13" fill="#0f172a" fill-opacity="0.7" stroke="#34d399" stroke-opacity="0.35"/>
+      <circle cx="14" cy="13" r="3" fill="#34d399"/>
+      <text x="24" y="17" fill="#cbd5e1">GitHub Models</text>
+    </g>
+    <g transform="translate(382,278)">
+      <rect width="80" height="26" rx="13" fill="#0f172a" fill-opacity="0.7" stroke="#34d399" stroke-opacity="0.35"/>
+      <circle cx="14" cy="13" r="3" fill="#34d399"/>
+      <text x="24" y="17" fill="#cbd5e1">Gemini</text>
+    </g>
+    <g transform="translate(470,278)">
+      <rect width="124" height="26" rx="13" fill="#0f172a" fill-opacity="0.7" stroke="#34d399" stroke-opacity="0.35"/>
+      <circle cx="14" cy="13" r="3" fill="#34d399"/>
+      <text x="24" y="17" fill="#cbd5e1">OpenRouter :free</text>
+    </g>
+
+    <!-- Paid pool chips -->
+    <g transform="translate(602,278)">
+      <rect width="84" height="26" rx="13" fill="#0f172a" fill-opacity="0.7" stroke="#fbbf24" stroke-opacity="0.35"/>
+      <circle cx="14" cy="13" r="3" fill="#fbbf24"/>
+      <text x="24" y="17" fill="#cbd5e1">DeepSeek</text>
+    </g>
+    <g transform="translate(694,278)">
+      <rect width="100" height="26" rx="13" fill="#0f172a" fill-opacity="0.7" stroke="#fbbf24" stroke-opacity="0.35"/>
+      <circle cx="14" cy="13" r="3" fill="#fbbf24"/>
+      <text x="24" y="17" fill="#cbd5e1">OpenRouter</text>
+    </g>
+    <g transform="translate(802,278)">
+      <rect width="80" height="26" rx="13" fill="#0f172a" fill-opacity="0.7" stroke="#fbbf24" stroke-opacity="0.35"/>
+      <circle cx="14" cy="13" r="3" fill="#fbbf24"/>
+      <text x="24" y="17" fill="#cbd5e1">xAI Grok</text>
+    </g>
+    <g transform="translate(890,278)">
+      <rect width="100" height="26" rx="13" fill="#0f172a" fill-opacity="0.7" stroke="#fbbf24" stroke-opacity="0.35"/>
+      <circle cx="14" cy="13" r="3" fill="#fbbf24"/>
+      <text x="24" y="17" fill="#cbd5e1">NVIDIA NIM</text>
+    </g>
+    <g transform="translate(998,278)">
+      <rect width="72" height="26" rx="13" fill="#0f172a" fill-opacity="0.7" stroke="#fbbf24" stroke-opacity="0.35"/>
+      <circle cx="14" cy="13" r="3" fill="#fbbf24"/>
+      <text x="24" y="17" fill="#cbd5e1">Venice</text>
+    </g>
+  </g>
+
+  <!-- Fallback chain hint -->
+  <text x="50" y="335" font-size="11" fill="#64748b" font-weight="600" letter-spacing="1">FALLBACK CHAIN</text>
+  <g transform="translate(50,348)" font-size="11" fill="#94a3b8">
+    <text x="0" y="12">on failure:</text>
+    <text x="80" y="12" fill="#22d3ee">↻ next cheapest</text>
+    <text x="195" y="12">→</text>
+    <text x="215" y="12" fill="#a78bfa">↻ curated chain</text>
+    <text x="335" y="12">→</text>
+    <text x="355" y="12" fill="#f472b6">↻ broader sweep</text>
+  </g>
+
+  <!-- Footer mini-stats -->
+  <text x="50" y="395" font-size="10" fill="#475569">Python 3.11+ · MIT License · v2.1.0 · 28 tests passing</text>
+  <text x="1150" y="395" font-size="10" fill="#475569" text-anchor="end">github.com/jphermans/hermes-router-cli</text>
+</svg>

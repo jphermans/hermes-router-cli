@@ -14,28 +14,9 @@
 [![Plugin](https://img.shields.io/badge/Hermes%20Plugin-2.1.0-8A2BE2)](#-hermes-agent-plugin)
 [![Cost](https://img.shields.io/badge/$0%2Ftoken-free%20pool-2ea44f)](#-free-vs-paid--the-one-knob)
 
-```
-       ┌────────────────────────────────────────────────────────────────┐
-       │                                                                │
-       │    ┌──────────┐      ┌──────────────┐      ┌────────────────┐  │
-       │    │  prompt  │ ───► │ hermes-router │ ───► │ best answer    │  │
-       │    └──────────┘      │              │      │  🟢 free / 🟡  │  │
-       │                      │  11 providers│      │      paid      │  │
-       │                      │   37 models  │      └────────────────┘  │
-       │                      │              │                          │
-       │                      │  price-rank  │      on failure:         │
-       │                      │  + tier-     │      ↻ next cheapest    │
-       │                      │  classify    │      ↻ curated chain    │
-       │                      │              │      ↻ broader sweep     │
-       │                      └──────────────┘                          │
-       │                                                                │
-       │         🟢 free pool        🟡 paid pool                       │
-       │         z.ai · Kilo ·       DeepSeek · OpenRouter ·            │
-       │         GitHub · Gemini ·   xAI · NVIDIA · Venice              │
-       │         OpenRouter:free                                        │
-       │                                                                │
-       └────────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="docs/banner.svg" alt="hermes-router — cost-aware LLM router across 11 providers and 37 models" width="100%">
+</p>
 
 A Python CLI that **routes any prompt to the cheapest LLM that can answer it**,
 across **11 OpenAI-compatible providers** you already have keys for.
