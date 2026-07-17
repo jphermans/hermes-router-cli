@@ -26,6 +26,7 @@ import random
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -132,6 +133,25 @@ def select(
     # Stability: sort by (cost, capability asc, provider, model) so the plan
     # is deterministic across runs of the same prompt.
     pool.sort(key=lambda c: (c.est_cost, TIER_ORDER.get(c.tier, 1), c.provider, c.model))
+
+    # Apply model filters: blocklist removes candidates, preferlist boosts them.
+    filters = cfg.get("policy", {}).get("model_filters", {})
+    blocked_names = {b.get("name") for b in (filters.get("block") or []) if b.get("name")}
+    if blocked_names:
+        removed = [f"{c.provider}/{c.model}" for c in pool if f"{c.provider}/{c.model}" in blocked_names or c.model in blocked_names]
+        pool = [c for c in pool if f"{c.provider}/{c.model}" not in blocked_names and c.model not in blocked_names]
+
+    preferred = [p.get("name") for p in (filters.get("prefer") or []) if p.get("name")]
+    if preferred:
+        # Boost preferred models: reduce their effective cost to 0 so they
+        # sort above everything else (except $0 free models).
+        for c in pool:
+            key = f"{c.provider}/{c.model}"
+            if key in preferred or c.model in preferred:
+                if c.est_cost > 0:
+                    c.est_cost = 0.000001  # just above $0
+        pool.sort(key=lambda c: (c.est_cost, TIER_ORDER.get(c.tier, 1), c.provider, c.model))
+
     return pool, chosen_tier, debug
 
 
@@ -331,11 +351,13 @@ def route(
     images: Optional[list[str]] = None,
     force_vision: Optional[bool] = None,
     cfg: Optional[dict] = None,
+    auto_fallback: bool = False,
 ) -> dict:
     """Route a prompt through the configured providers.
 
     cost_class:  'free' (default subscription/prepaid pool), 'paid', or 'any'.
     images:      list of URLs or data URLs for vision prompts.
+    auto_fallback: if True and cost_class='free' fails, retry with 'paid'.
     """
     cfg = cfg if cfg is not None else load_config()
     max_out = min(max_out, cfg.get("policy", {}).get("max_output_tokens", 1024))
@@ -403,8 +425,60 @@ def route(
             return True
         return False
 
-    # First pass: try every candidate in the price-ranked plan.
-    for c in plan:
+    # First pass: try candidates with parallel fallback for speed.
+    # The first PARALLEL_BATCH candidates are tried simultaneously with a
+    # short timeout. The fastest successful response wins. If all fail,
+    # continue sequentially with the remaining candidates.
+    PARALLEL_BATCH = 3
+    parallel_timeout = min(15, cfg.get("policy", {}).get("parallel_timeout", 15))
+    sequential_candidates = list(plan)
+
+    # Take the first N for parallel attempt
+    parallel_cands = sequential_candidates[:PARALLEL_BATCH]
+    sequential_candidates = sequential_candidates[PARALLEL_BATCH:]
+
+    def _try_parallel(c: Candidate) -> tuple:
+        """Wrapper for parallel execution."""
+        if _circuit_skip(c, f"{FAIL_SKIP_THRESHOLD}+ retryable failures earlier in this run"):
+            return ("circuit_skipped", c, None, [])
+        if not budget_check(c.provider, c.est_cost, cap):
+            return ("budget", c, None, [{"provider": c.provider, "model": c.model,
+                                         "error": "monthly budget cap exceeded"}])
+        try:
+            result, attempts = _try_candidate(c, prompt, max_out, system, images=images,
+                                              key_backoff_base=0.2)  # shorter backoff for parallel
+            return ("ok", c, result, attempts)
+        except Exception as e:
+            return ("error", c, None, [{"provider": c.provider, "model": c.model,
+                                        "error": f"{type(e).__name__}: {e}"}])
+
+    with ThreadPoolExecutor(max_workers=PARALLEL_BATCH) as executor:
+        futures = {executor.submit(_try_parallel, c): c for c in parallel_cands if not _circuit_skip(c, "circuit-skipped before parallel")}
+        for future in as_completed(futures, timeout=parallel_timeout):
+            status, c, result, attempts = future.result()
+            # Count failures for circuit breaker
+            for a in attempts:
+                if not a.get("ok") and not a.get("permanent"):
+                    failed_counts[(c.provider, c.model)] = failed_counts.get((c.provider, c.model), 0) + 1
+            tried.extend(attempts)
+            if status == "ok" and result is not None:
+                # Cancel remaining futures
+                for f in futures:
+                    f.cancel()
+                budget_record(c.provider, c.est_cost)
+                out.update({
+                    "selected_provider": c.provider,
+                    "selected_model": c.model,
+                    "response": result["text"],
+                    "usage": result["usage"],
+                    "est_cost_usd": round(c.est_cost, 6),
+                    "fallbacks_tried": tried,
+                    "ok": True,
+                })
+                return out
+
+    # Remaining candidates (sequential fallback)
+    for c in sequential_candidates:
         if _circuit_skip(c, f"{FAIL_SKIP_THRESHOLD}+ retryable failures earlier in this run"):
             continue
         if not budget_check(c.provider, c.est_cost, cap):
@@ -444,29 +518,63 @@ def route(
             })
             return out
 
-    # Second pass: a 'curated' fallback chain (zai-overload case lives here).
+    # Second pass: per-provider curated fallback chains.
+    # Look up the failing provider(s) in policy.fallback_chains and collect
+    # candidates from those chains. Backward-compat: the old
+    # policy.zai_fallback_chain is merged into fallback_chains under key 'zai'.
     tried_keys = {(t["provider"], t["model"]) for t in tried}
-    curated = cfg.get("policy", {}).get("zai_fallback_chain", []) or []
+    fallback_chains = dict(cfg.get("policy", {}).get("fallback_chains", {}) or {})
+    # Backward-compat: merge old zai_fallback_chain if still present
+    old_chain = cfg.get("policy", {}).get("zai_fallback_chain", []) or []
+    if old_chain and "zai" not in fallback_chains:
+        fallback_chains["zai"] = old_chain
+
+    # Collect providers that failed in the first pass
+    failed_providers = set()
+    for t in tried:
+        if not t.get("ok"):
+            failed_providers.add(t.get("provider"))
+    # Also add any providers that were circuit-skipped
+    for s in skipped_circuit:
+        failed_providers.add(s.get("provider"))
+
     curated_cands: list[Candidate] = []
-    for entry in curated:
-        for p in build_providers(cfg):
-            if p.name != entry.get("provider"):
+    seen_chain_pairs: set[tuple[str, str]] = set()
+
+    def _add_chain_entries(for_provider: str) -> None:
+        chain = fallback_chains.get(for_provider, [])
+        if not chain:
+            return
+        providers_list = build_providers(cfg)
+        for entry in chain:
+            if (entry.get("provider"), entry.get("model")) in seen_chain_pairs:
                 continue
-            target_model = entry.get("model")
-            m = next((mm for mm in p.models if mm.name == target_model), None)
-            if not m:
-                continue
-            # If the user constrained cost_class, only follow a chain entry that fits.
-            if cost_class not in ("any", m.cost_class):
-                continue
-            curated_cands.append(Candidate(
-                provider=p.name, model=m.name, tier=m.tier,
-                input_price=m.input_price, output_price=m.output_price,
-                context=m.context, vision=m.vision, cost_class=m.cost_class,
-                base_url=p.base_url, api_keys=list(p.keys),
-                est_cost=c.est_cost,  # rough — we re-derive below
-            ))
-            break
+            seen_chain_pairs.add((entry.get("provider"), entry.get("model")))
+            for p in providers_list:
+                if p.name != entry.get("provider"):
+                    continue
+                target_model = entry.get("model")
+                m = next((mm for mm in p.models if mm.name == target_model), None)
+                if not m:
+                    continue
+                if cost_class not in ("any", m.cost_class):
+                    continue
+                curated_cands.append(Candidate(
+                    provider=p.name, model=m.name, tier=m.tier,
+                    input_price=m.input_price, output_price=m.output_price,
+                    context=m.context, vision=m.vision, cost_class=m.cost_class,
+                    base_url=p.base_url, api_keys=list(p.keys),
+                    est_cost=m.input_price / 1_000_000 * debug["estimated_tokens"] +
+                             m.output_price / 1_000_000 * max_out,
+                ))
+                break
+
+    # First, try chains of all failed providers (most relevant)
+    for prov in failed_providers:
+        _add_chain_entries(prov)
+    # If no failed-provider chains matched, fall back to 'default' chain if any
+    if not curated_cands:
+        _add_chain_entries("default")
 
     for c in curated_cands:
         if (c.provider, c.model) in tried_keys:
@@ -548,6 +656,26 @@ def route(
     })
     if skipped_circuit:
         out["circuit_skipped"] = skipped_circuit
+
+    # Auto-fallback: if cost_class='free' failed and auto_fallback is on,
+    # retry with the paid pool. This saves the user from manually retrying.
+    if auto_fallback and cost_class == "free":
+        out["auto_fallback_used"] = True
+        retry = route(
+            prompt, force_tier=force_tier, max_out=max_out,
+            dry_run=dry_run, system=system, cost_class="paid",
+            images=images, force_vision=force_vision, cfg=cfg,
+            auto_fallback=False,  # don't recurse infinitely
+        )
+        if retry.get("ok"):
+            retry["auto_fallback_used"] = True
+            retry["auto_fallback_note"] = "free pool exhausted; fell back to paid"
+            return retry
+        # Paid also failed — merge fallbacks_tried for a complete picture.
+        tried.extend(retry.get("fallbacks_tried", []))
+        out["fallbacks_tried"] = tried
+        out["error"] = "Free + paid pools both exhausted. See fallbacks_tried."
+
     return out
 
 

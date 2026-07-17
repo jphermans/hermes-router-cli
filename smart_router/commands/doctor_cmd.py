@@ -15,6 +15,8 @@ def add_subparser(sub):
     p = sub.add_parser("doctor",
                        help="Diagnose configuration problems. Safe to run — makes no API calls.")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--verbose", "-v", action="store_true",
+                   help="Show per-provider details (keys, models, base_url).")
     p.set_defaults(func=run)
     return p
 
@@ -108,6 +110,25 @@ def run(args: argparse.Namespace) -> int:
         "detail": "missing: " + ", ".join(bad_urls) if bad_urls else "all set",
     })
 
+    # 5. Verbose: per-provider details
+    if args.verbose:
+        provider_details = []
+        for p in providers_all:
+            details = {
+                "provider": p.name,
+                "class": p.cost_class,
+                "base_url": p.base_url,
+                "has_keys": len(p.keys) > 0,
+                "key_count": len(p.keys),
+                "models": [m.name for m in p.models],
+            }
+            provider_details.append(details)
+        findings.append({
+            "check": "provider details (--verbose)",
+            "ok": True,
+            "detail": provider_details,
+        })
+
     return _emit(args, findings)
 
 
@@ -118,5 +139,21 @@ def _emit(args: argparse.Namespace, findings: list[dict]) -> int:
     else:
         for f in findings:
             mark = "✓" if f["ok"] else "✗"
-            print(f"{mark} {f['check']:<25}  {f['detail']}")
+            if f["check"] == "provider details (--verbose)":
+                # Verbose output — print per-provider table
+                details = f["detail"]
+                if not details:
+                    print(f"{mark} provider details  (no providers configured)")
+                    continue
+                print(f"{mark} provider details:")
+                for p in details:
+                    key_status = "🔑" if p["has_keys"] else "❌"
+                    models_short = ", ".join(p["models"][:4])
+                    if len(p["models"]) > 4:
+                        models_short += f" … ({len(p['models'])} total)"
+                    print(f"     {p['provider']:<18} {p['class']:<5} {key_status} "
+                          f"{p['key_count']} key(s)  {p['base_url']}")
+                    print(f"     {'':<18} {'':<5}  models: {models_short}")
+            else:
+                print(f"{mark} {f['check']:<25}  {f['detail']}")
     return 0 if all(f["ok"] for f in findings) else 1

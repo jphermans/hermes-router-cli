@@ -40,6 +40,16 @@ def spend_for_current_month() -> dict[str, float]:
     return b.get(time.strftime("%Y-%m"), {})
 
 
+def spend_for_months(n: int = 1) -> dict[str, dict[str, float]]:
+    """Return spend data for the last N months.
+    Returns {month_key: {provider: cost, ...}, ...}
+    Most recent month first.
+    """
+    b = load_budget()
+    months = sorted(b.keys(), reverse=True)[:n]
+    return {m: b[m] for m in months}
+
+
 def check(provider: str, est_cost: float, cap_usd: float) -> bool:
     """Return True if spending `est_cost` more on `provider` stays under cap."""
     if not cap_usd:

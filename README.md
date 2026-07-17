@@ -578,7 +578,85 @@ router estimates input tokens at ~4 chars/token.
 
 ---
 
-## ⚙️ Configuration
+## 🔧 Troubleshooting FAQ
+
+### "PyYAML is required" when running `hr`
+
+```
+✗ PyYAML installed  PyYAML is required to parse config.yaml.
+```
+
+De venv/ is niet correct ingesteld. Fix:
+
+```bash
+cd ~/.hermes/hermes-router
+python3 install.py --no-symlink
+```
+
+### `hr: command not found`
+
+De symlink in `~/.local/bin/` ontbreekt of `~/.local/bin/` staat niet op je PATH.
+
+```bash
+# Check of de symlink bestaat
+ls -la ~/.local/bin/hr
+
+# Zo niet, maak hem aan:
+ln -s ~/.hermes/hermes-router/hr ~/.local/bin/hr
+
+# Voeg ~/.local/bin toe aan PATH (in ~/.bashrc of ~/.zshrc):
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### "Unknown command" bij `/hr doctor` in Hermes chat
+
+De plugin voegt **tools** toe, geen **slash commands**. Zeg gewoon "Run hr_doctor" in de chat — geen `/hr doctor`.
+
+Als de plugin tools niet verschijnen: check of de plugin enabled is (`hermes plugins list | grep hermes-router`) en stuur `/reset` in de chat om een nieuwe sessie te starten.
+
+### Alle providers falen met 401 (unauthorized)
+
+Je API keys zijn niet (correct) ingesteld. Check met:
+
+```bash
+hr auth
+```
+
+Keys moeten in `~/.hermes/.env` staan. Bijv.:
+
+```bash
+echo "GLM_API_KEY=sk-your-key-here" >> ~/.hermes/.env
+echo "OPENROUTER_API_KEY=sk-your-key-here" >> ~/.hermes/.env
+```
+
+### Free pool faalt: "no free-tier candidates"
+
+Niet alle providers hebben een free tier. Check of je minstens één free provider hebt met keys:
+
+```bash
+hr doctor
+hr auth | grep free
+```
+
+Providers zoals z.ai (GLM Coding Plan), Kilo Code, GitHub Models, en Gemini free hebben free tiers.
+
+### `hr route --class free` gebruikt een paid model
+
+Dat kan niet — `--class free` filtert strikt op free modellen. Als je een paid model ziet in `--dry-run`, dan heeft die provider `cost_class: free` in config.yaml maar het model zelf heeft `cost_class: paid`. Check met `hr doctor --verbose`.
+
+### Router is traag / timeout
+
+De nieuwe parallelle fallback probeert de eerste 3 kandidaten tegelijk. Als dat nog te traag is:
+
+```bash
+# Verlaag de parallel timeout in config.yaml:
+# policy.parallel_timeout: 10
+```
+
+Of gebruik `--dry-run` om te zien welke providers geprobeerd worden.
+
+
 
 Edit `config.yaml` to add/remove providers or change prices:
 

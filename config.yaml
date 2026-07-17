@@ -137,10 +137,28 @@ policy:
   allow_fallback: true
   max_output_tokens: 1024
   monthly_budget_per_provider: 0   # 0 = unlimited
-  # When z.ai (GLM) is overloaded, fall back to this curated chain instead of
-  # a raw price-rank. Each entry: {provider, model}.
-  zai_fallback_chain:
-    - {provider: kilo,   model: tencent/hy3}
-    - {provider: github_models, model: gpt-4o-mini}
-    - {provider: deepseek, model: deepseek-chat}
-    - {provider: venice,  model: deepseek-v4-flash}
+  parallel_timeout: 15             # seconds for parallel candidate batch
+
+  # Per-provider fallback chains.
+
+  # Model filters: blocklist and preferlist.
+  # Blocked models are never selected (even if cheapest).
+  # Preferred models are boosted above their price rank (but free still beats paid).
+  model_filters:
+    block:
+      - name: "zai/glm-4.5-air"        # too slow
+    prefer: []
+      # - name: "zai/glm-5.2"          # uncomment to boost this model
+  # When a provider from the price-ranked plan fails, the router looks up
+  # the failing provider here and tries its chain before the broader sweep.
+  # Key = provider name, value = ordered list of {provider, model} fallbacks.
+  # Backward-compat: the old 'zai_fallback_chain' is merged into this map.
+  fallback_chains:
+    zai:
+      - {provider: kilo,   model: tencent/hy3}
+      - {provider: github_models, model: gpt-4o-mini}
+      - {provider: deepseek, model: deepseek-chat}
+      - {provider: venice,  model: deepseek-v4-flash}
+    deepseek:
+      - {provider: openrouter, model: meta-llama/llama-3.1-8b-instruct}
+      - {provider: venice,     model: deepseek-v4-flash}

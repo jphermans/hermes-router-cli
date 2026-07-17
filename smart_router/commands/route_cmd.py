@@ -30,6 +30,8 @@ def add_subparser(sub):
                    help="Force vision-capable model selection.")
     p.add_argument("--pretty", action="store_true",
                    help="Render a human-readable summary instead of raw JSON.")
+    p.add_argument("--auto-fallback", action="store_true",
+                   help="If --class free fails, automatically retry with --class paid.")
     p.set_defaults(func=run)
     return p
 
@@ -70,6 +72,7 @@ def run(args: argparse.Namespace) -> int:
         cost_class=args.cost_class,
         images=args.images or None,
         force_vision=args.vision,
+        auto_fallback=args.auto_fallback,
     )
     if args.pretty:
         print(_render_pretty(result))
@@ -88,7 +91,9 @@ def _render_pretty(r: dict) -> str:
         return "\n".join(lines)
     if r.get("ok"):
         chain = ""
-        if r.get("via_curated_chain"):
+        if r.get("auto_fallback_used"):
+            chain = " (via auto-fallback from free → paid)"
+        elif r.get("via_curated_chain"):
             chain = " (via curated chain)"
         elif r.get("via_broader_fallback"):
             chain = " (via broader sweep)"
