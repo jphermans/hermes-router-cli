@@ -8,6 +8,7 @@ __pycache__/
 
 # Virtual envs
 .venv/
+.test_venv/
 venv/
 env/
 .env

@@ -39,12 +39,15 @@ the right flag name.
 | Feature | How it works |
 |---------|---------------|
 | **Tab-completion** for bash / zsh / fish | Built on [`argcomplete`](https://github.com/kislyuk/argcomplete). Auto-reads every argparse definition — zero hand-maintained completion strings. New flags appear in completion for free. |
+| **Auto-activated** on install | The installer writes a small eval block to your `~/.bashrc` / `~/.zshrc` (and `~/.config/fish/completions/hr.fish` for fish). Open a new shell and `hr <Tab>` just works — no manual `eval` needed. |
+| **Clean uninstall** | The same block is removed on uninstall. Re-running install is idempotent — no duplicated snippets. |
 | **Per-flag choices** | `--class free|paid|any`, `--tier cheap|standard|pro` — all completable. |
 | **Subcommand names** | `hr <Tab>` shows all 8 subcommands. |
 | **Zero manual sync** | Add a new flag in `add_subparser()` and it shows up in <kbd>Tab</kbd> the next time you install. |
 
 Backwards compatible with 2.1. `argcomplete` is a small dependency
-(~50 KB) and is skipped silently if not installed.
+(~50 KB) and is skipped silently if not installed. Skip the auto-activation
+with `--no-completion` if you'd rather wire it yourself.
 
 ## 🎉 What's new in 2.1
 
@@ -181,6 +184,12 @@ hr route --prompt "Say hello in Dutch" --class free --pretty
 If `hr doctor` shows your providers and `hr route` returns an answer,
 you're all set.
 
+**Bonus: tab-completion is already active.** The bootstrap wrote a small
+eval block to your `~/.bashrc` (and `~/.zshrc` / `~/.config/fish/` if
+present). Open a new shell and try `hr <Tab>` — you'll see all 8
+subcommands. Skip this with `--no-completion` if you'd rather wire it
+yourself.
+
 ### Step 3 — Enable the Hermes plugin
 
 To use the router from inside a Hermes chat session:
@@ -258,18 +267,24 @@ guessing or `hr --help` lookups. Powered by
 [`argcomplete`](https://github.com/kislyuk/argcomplete) (auto-installed by
 the bootstrap as of v2.2).
 
+**Auto-activated on install.** The bootstrap writes a small eval block to
+your `~/.bashrc` (and `~/.zshrc` if you have one, or
+`~/.config/fish/completions/hr.fish` for fish). Open a new shell and
+`hr <Tab>` just works. Re-running install is idempotent — no duplicated
+snippets. Uninstall removes the block automatically.
+
 ```bash
-# What you get:
-hr <Tab>              # → route models verify auth doctor budget chat init
-hr route <Tab>        # → (prints help, since `route` needs --prompt)
-hr route --<Tab>      # → --prompt -p --tier --class --max-tokens --pretty …
+# What you get (try it in any new shell):
+hr <Tab>                # → route models verify auth doctor budget chat init
+hr route --<Tab>        # → --prompt -p --tier --class --max-tokens --pretty …
 hr route --class <Tab>  # → free paid any
 hr route --tier <Tab>   # → cheap standard pro
 hr models --class <Tab> # → free paid any
-hr doctor --<Tab>      # → --json --verbose
+hr doctor --<Tab>       # → --json --verbose
 ```
 
-**Activate it in your shell** (one line, picked by your shell):
+**Manual activation** (only needed if you skipped `--no-completion` or use
+a non-standard shell):
 
 ```bash
 # bash — add to ~/.bashrc
@@ -283,18 +298,16 @@ eval "$(register-python-argcomplete hr)"
 register-python-argcomplete hr | source
 ```
 
-> **Tip:** `register-python-argcomplete` lives inside the hermes-router
-> `.venv/`. If your shell can't find it, point at the full path:
+> **Tip:** `register-python-argcomplete` is symlinked into `~/.local/bin/`
+> during install, so it's reachable as a bare command. If it's not on your
+> `PATH`, point at the full path:
 > `eval "$(~/.hermes/hermes-router/.venv/bin/register-python-argcomplete hr)"`
 
-**Global completion (catches every Python CLI):** put this in `~/.bashrc`
-and you never need to `eval` per-tool again — `argcomplete` finds any
-`argcomplete.autocomplete()`-aware CLI on your `$PATH`:
-
-```bash
-eval "$(register-python-argcomplete --no-defaults --complete-arguments -- / hr \
-  2>/dev/null)"   # ↑ narrow to a single command, or use a * wildcard for all
-```
+**To remove the auto-activation block manually**, open `~/.bashrc` (or
+`~/.zshrc`) and delete the section between
+`# >>> hermes-router tab-completion (...) >>>` and
+`# <<< hermes-router tab-completion (...) <<<` (the markers include a
+random token so they're easy to find).
 
 ### Check the health of your setup
 
