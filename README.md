@@ -172,6 +172,29 @@ The recording shows: install → `hr --version` → `hr doctor` →
 The `hr` command works from anywhere in your terminal. It shares API keys
 with Hermes — no extra setup needed.
 
+### Quick help with colors and icons
+
+`hr --help` (or `hr -h`) shows a rich, color-coded cheat sheet with all
+sub-commands, their flags, and common recipes:
+
+```bash
+hr --help
+```
+
+When run in a terminal, this prints a colorized reference with:
+
+- 📋 **Quick reference** — setup, daily use, and monitoring recipes
+- 🔧 **Sub-commands** — full per-command flag list (auto-extracted from the code)
+- 💡 **Common flags** — `--class`, `--tier`, `--pretty`, `--json`, `--max-tokens`, `--max-cost`
+- 🔀 **Auto-fallback & cost control** — `--auto-fallback`, `--max-cost`
+- 📚 **More info** — links and pointers
+
+For detailed options on a single command, use `hr <command> --help` —
+e.g. `hr route --help`, `hr chat --help`, `hr budget --help`.
+
+> **Note:** colors and icons only render when stdout is a TTY (interactive
+> terminal). Piped output (`hr --help | cat`) stays plain text — script-friendly.
+
 ### Check the health of your setup
 
 ```bash
