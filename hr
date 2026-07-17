@@ -8,9 +8,11 @@ back to the current `sys.executable` otherwise. This means the launcher
 from the project root (`./hr --version`). Crucially, it does NOT mutate
 the venv — that's install.py's job.
 """
+
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,6 +21,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python3"
 VENV_PYTHON_WIN = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
+REQUIREMENTS = PROJECT_ROOT / "requirements.txt"
+INSTALL_PY = PROJECT_ROOT / "install.py"
 
 # Forward every arg we got; re-exec under the venv python if it exists AND
 # we're not already running inside it (avoid infinite re-exec).
@@ -29,36 +33,97 @@ def _is_running_inside(target: Path) -> bool:
         return False
 
 
-if sys.platform == "win32" and VENV_PYTHON_WIN.exists() \
-        and not _is_running_inside(VENV_PYTHON_WIN):
-    os.execv(str(VENV_PYTHON_WIN), [str(VENV_PYTHON_WIN)] + sys.argv)
-elif VENV_PYTHON.exists() and not _is_running_inside(VENV_PYTHON):
-    os.execv(str(VENV_PYTHON), [str(VENV_PYTHON)] + sys.argv)
+def _self_heal() -> bool:
+    """Try to set up a .venv + install PyYAML automatically.
 
-# No venv present — run with whatever interpreter the user is using.
-# Tell the user up front if smart_router can't be imported; install.py
-# is the canonical way to (re)create the venv + install PyYAML.
-sys.path.insert(0, str(PROJECT_ROOT))
-try:
-    from smart_router.__main__ import main
-except ModuleNotFoundError as e:
-    sys.stderr.write(
-        f"hr: smart_router is not importable: {e}\n"
-        f"  hint: run `python3 install.py` to create the venv and install deps.\n"
-    )
-    sys.exit(2)
-except SystemExit:
-    raise
-except Exception:
-    # smart_router's top-level may try to import yaml; if the env is
-    # missing PyYAML, show the install hint instead of a raw traceback.
-    if "yaml" in repr(sys.exc_info()[1]).lower() or "No module" in repr(sys.exc_info()[1]):
-        sys.stderr.write(
-            "hr: PyYAML is not installed in this Python interpreter.\n"
-            f"  hint: run `python3 install.py` to set up {PROJECT_ROOT / '.venv'}.\n"
+    Returns True if the venv is now usable, False on failure.
+    """
+    from email.message import Message
+    import io
+    import urllib.request
+
+    print("📦 Setting up hermes-router environment...", file=sys.stderr)
+    sys.stderr.flush()
+
+    # 1. Create venv.
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "venv", str(PROJECT_ROOT / ".venv")],
+            check=True, timeout=60,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         )
-        sys.exit(2)
-    raise
+    except subprocess.CalledProcessError as e:
+        print(f"  ✗ Failed to create .venv: {e}", file=sys.stderr)
+        return False
+
+    pip_path = str(VENV_PYTHON if not os.name == "nt" else VENV_PYTHON_WIN)
+
+    # 2. Try local requirements.txt first.
+    if REQUIREMENTS.exists():
+        try:
+            subprocess.run(
+                [pip_path, "-m", "pip", "install", "-q", "-r", str(REQUIREMENTS)],
+                check=True, timeout=120,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            )
+            print("  ✓ Dependencies installed", file=sys.stderr)
+            return True
+        except subprocess.CalledProcessError:
+            pass  # fall through to PyPI fallback
+
+    # 3. Fallback: install PyYAML directly from PyPI.
+    try:
+        subprocess.run(
+            [pip_path, "-m", "pip", "install", "-q", "pyyaml"],
+            check=True, timeout=120,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        )
+        print("  ✓ PyYAML installed", file=sys.stderr)
+        return True
+    except subprocess.CalledProcessError:
+        print("  ✗ pip install failed", file=sys.stderr)
+        return False
+
+
+def main():
+    # Find which python to use.
+    target = VENV_PYTHON if os.name != "nt" else VENV_PYTHON_WIN
+
+    if target.exists() and not _is_running_inside(target):
+        # Re-exec under the project venv.
+        os.execv(str(target), [str(target), str(INSTALL_PY if "install" in sys.argv else PROJECT_ROOT / "hr")] + sys.argv[1:])
+
+    # No venv or already inside it — check for yaml.
+    try:
+        import yaml  # noqa: F401
+        yaml_ok = True
+    except ImportError:
+        yaml_ok = False
+
+    if not yaml_ok and VENV_PYTHON.parent.exists():
+        # Venv exists but yaml not installed. Try one self-heal.
+        if not _self_heal():
+            print("  ✗ PyYAML missing. Run `python3 install.py` to fix manually.", file=sys.stderr)
+            sys.exit(2)
+        # Now re-exec under the now-installed venv.
+        if target.exists() and not _is_running_inside(target):
+            os.execv(str(target), [str(target), __file__] + sys.argv[1:])
+
+    # No venv at all — try to create one + install.
+    if not VENV_PYTHON.parent.exists():
+        if not _self_heal():
+            print("  ✗ Could not set up the environment.", file=sys.stderr)
+            print("    Run `python3 install.py` manually to diagnose.", file=sys.stderr)
+            sys.exit(2)
+        # Now re-exec under the newly-created venv.
+        if target.exists() and not _is_running_inside(target):
+            os.execv(str(target), [str(target), __file__] + sys.argv[1:])
+
+    # If we got here, we're already inside the venv or self-heal failed.
+    # Fall through to the CLI.
+    from smart_router.__main__ import main as cli_main
+    sys.exit(cli_main())
+
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
