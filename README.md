@@ -11,7 +11,7 @@
 [![Models](https://img.shields.io/badge/models-37-2ea44f)](config.yaml)
 [![Sub-commands](https://img.shields.io/badge/subcommands-8-blue)](#-usage)
 [![Tests](https://img.shields.io/badge/tests-28%20passing-brightgreen)](tests/)
-[![Plugin](https://img.shields.io/badge/Hermes%20Plugin-2.2.0-8A2BE2)](#-hermes-agent-plugin)
+[![Plugin](https://img.shields.io/badge/Hermes%20Plugin-2.2.1-8A2BE2)](#-hermes-agent-plugin)
 [![Cost](https://img.shields.io/badge/$0%2Ftoken-free%20pool-2ea44f)](#-free-vs-paid--the-one-knob)
 
 <p align="center">
@@ -29,6 +29,22 @@ can call). Same engine, different surfaces.
 </div>
 
 ---
+
+## 🎉 What's new in 2.2.1
+
+hermes-router 2.2.1 is a patch release that makes the installer work
+cleanly on **macOS** and **Windows 11 WSL2** — not just Linux.
+
+| Improvement | How it works |
+|-------------|--------------|
+| **Platform detection** | Auto-detects `linux` / `macos` / `wsl` via `sys.platform` + `/proc/version`. Banner shows the label; WSL/macOS-specific notes print after. |
+| **Per-platform PATH hints** | macOS bash → `~/.bash_profile` (not `~/.bashrc`); macOS zsh → `~/.zshrc`; WSL → `~/.bashrc` + `~/.profile` (Windows Terminal login shells). |
+| **Tab-completion in more rc files** | Now activates in `~/.zshrc`, `~/.bash_profile`, `~/.zprofile`, and `~/.profile` if they exist (was only `~/.bashrc` / `~/.zshrc`). |
+| **venv preflight check** | If `python3-venv` is missing, prints the right install command for your distro (apt/dnf/pacman) instead of failing mid-install. |
+| **README "Platform support" section** | Per-OS install instructions + troubleshooting. |
+
+Backward-compatible with 2.2.0 — no API changes, no config changes.
+Skip auto-rc-edits with `--no-completion` as before.
 
 ## 🎉 What's new in 2.2
 
@@ -90,6 +106,7 @@ auto-merged into `fallback_chains: {zai: ...}`.
 1. [⚡ Quick start: install in 2 minutes](#-quick-start-install-in-2-minutes)
 1. [🪶 Using hr in your terminal (CLI)](#-using-hr-in-your-terminal-cli)
    1. [Tab-completion (bash / zsh / fish)](#tab-completion-bash--zsh--fish)
+1. [🌐 Platform support](#-platform-support)
 1. [🧩 Hermes Agent plugin: use from chat](#-hermes-agent-plugin-use-from-chat)
 1. [📦 Alternative install methods](#-alternative-install-methods)
 1. [🗑️ Uninstall](#-uninstall)
@@ -139,6 +156,12 @@ trace.
 ---
 
 ## ⚡ Quick start: install in 2 minutes
+
+> **Tested on:** Linux (Pi, Ubuntu, Fedora, Arch), macOS (Catalina+),
+> Windows 11 WSL2. The installer detects your platform and adapts:
+> PATH hints target the right rc files (`~/.zshrc` on macOS, `~/.bashrc` +
+> `~/.profile` on WSL, etc.), and bash_profile/zshrc are auto-activated
+> for tab-completion. See [Platform support](#-platform-support) below.
 
 ### Step 1 — Install (one command, no cd needed)
 
@@ -229,6 +252,130 @@ The recording shows: install → `hr --version` → `hr doctor` →
 → `hr budget --last 3` → `hermes plugins enable --allow-tool-override`
 → chat usage example.
 
+
+---
+
+## 🌐 Platform support
+
+The installer auto-detects your platform (`linux`, `macos`, `wsl`) and
+adapts. Banner shows the detected label; you'll see WSL-specific or
+macOS-specific notes printed right after.
+
+### Linux (Raspberry Pi / Ubuntu / Fedora / Arch / etc.)
+
+Works out of the box on any distro with Python 3.11+ and `python3-venv`.
+
+```bash
+# Debian/Ubuntu/Raspbian — install prereqs once
+sudo apt install python3 python3-venv python3-pip
+
+# Fedora / RHEL
+sudo dnf install python3 python3-pip
+
+# Arch
+sudo pacman -S python python-pip
+```
+
+PATH: `~/.local/bin` is on PATH automatically via XDG Base Directory
+on most distros. If `which hr` returns nothing after install, add:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+```
+
+Tab-completion: activated in `~/.bashrc` (and `~/.profile` for login
+shells — some SSH sessions source only profile).
+
+### macOS (Catalina+ / Big Sur / Monterey / Sonoma / Sequoia)
+
+Default shell is zsh. The installer detects macOS via `sys.platform`
+and activates `~/.zshrc` for tab-completion + shows PATH hints
+specific to macOS.
+
+```bash
+# Install Python via Homebrew (recommended) — system Python is too old
+brew install python3
+
+# OR use pyenv for version management
+brew install pyenv
+pyenv install 3.12
+```
+
+PATH: macOS does NOT add `~/.local/bin` to PATH by default. The
+installer prints the right rc file for your shell (zshrc on zsh,
+bash_profile on bash):
+
+```bash
+# zsh (Catalina+ default) — add to ~/.zshrc
+export PATH="$HOME/.local/bin:$PATH"
+
+# bash (older macOS) — add to ~/.bash_profile (NOT .bashrc!)
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Tab-completion: activated in `~/.zshrc` (or `~/.bash_profile` if you
+still use bash). After install, open a **new Terminal window** — tab
+completion doesn't activate in already-running shells.
+
+### Windows (WSL2 only)
+
+Native Windows is not supported — install under WSL2 instead. The
+installer detects WSL via `/proc/version` content ("microsoft" / "WSL"
+markers) and prints WSL-specific notes.
+
+```bash
+# Inside your WSL2 distro (Ubuntu/Debian default)
+sudo apt update
+sudo apt install python3 python3-venv python3-pip
+```
+
+PATH: same as Linux. Tab-completion is activated in BOTH `~/.bashrc`
+(interactive shells) and `~/.profile` (login shells from Windows
+Terminal — these skip bashrc by default).
+
+> **WSL tips:**
+> - Don't install under `/mnt/c/...` (Windows filesystem) — use the
+>   Linux filesystem (`~`) for speed and to avoid path translation bugs.
+> - If `python3` resolves to `/mnt/c/.../python.exe`, fix your WSL PATH:
+>   in `/etc/wsl.conf` add `[interop] appendWindowsPath = false`.
+> - The installer uses Linux symlinks — Windows symlinks (in WSL) are
+>   not the same. Always stay in the Linux FS.
+
+### What the installer does per platform
+
+| Action | Linux | macOS | WSL |
+|---|---|---|---|
+| Detect via | `sys.platform == 'linux'` + `/proc/version` | `sys.platform == 'darwin'` | `/proc/version` contains `microsoft` / `wsl` |
+| Venv path | `<prefix>/.venv/bin/python` | same | same |
+| Symlink target | `~/.local/bin/hr` | same | same |
+| PATH hint rc file | `~/.bashrc` + `~/.profile` | `~/.zshrc` (zsh) or `~/.bash_profile` (bash) | `~/.bashrc` + `~/.profile` |
+| Tab-completion rc | `~/.bashrc` (and zshrc if present) | `~/.zshrc` (or bash_profile) | `~/.bashrc` + `~/.profile` |
+| Fish detection | `~/.config/fish/` | `~/.config/fish/` | `~/.config/fish/` |
+
+Skip the auto-rc-edit entirely with `--no-completion`.
+
+### Troubleshooting per platform
+
+**Linux: "PyYAML missing" or venv create failed**
+→ `sudo apt install python3-venv python3-pip` (or your distro equivalent).
+
+**macOS: `python3` not found**
+→ `brew install python3` (Apple's system Python is end-of-life).
+
+**macOS: tab-completion doesn't work after install**
+→ Did you open a **new** Terminal window? Tab-completion activates at
+shell startup; existing shells won't pick it up.
+
+**WSL2: tab-completion doesn't work in Windows Terminal**
+→ We write to `~/.bashrc` AND `~/.profile`. If Windows Terminal still
+doesn't show completions, check your default shell with `echo $SHELL`
+— if it's not bash, set Windows Terminal to use bash as the default
+profile.
+
+**macOS: SIP-related write failures**
+→ We install to `~/.hermes/hermes-router/` (user-owned) — never touches
+`/usr/local` or `/System`. SIP shouldn't affect us, but if it does,
+check `ls -ld ~/.hermes`.
 
 ---
 

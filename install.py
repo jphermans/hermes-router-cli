@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,51 @@ PYTHON = VENV / "bin" / "python"
 LOCAL_BIN = Path.home() / ".local" / "bin"
 SYMLINK = LOCAL_BIN / "hr"
 HERE = Path(__file__).resolve().parent
+
+
+# ─── Platform detection (Linux / macOS / WSL2) ──────────────────────────────
+
+def _detect_wsl() -> bool:
+    """True when running under WSL (1 or 2). Reads /proc/version for 'microsoft'
+    or 'WSL' markers — works without depending on the `wsl.exe` interop."""
+    try:
+        with open("/proc/version") as f:
+            content = f.read().lower()
+        return "microsoft" in content or "wsl" in content
+    except OSError:
+        return False
+
+
+def _detect_platform() -> str:
+    """Return 'macos', 'wsl2', 'wsl1', 'linux', 'windows', or 'other'."""
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith("linux"):
+        if _detect_wsl():
+            # WSL2 is the modern default; we don't try to distinguish 1 vs 2
+            # because the install path is identical. Call it 'wsl' for both.
+            return "wsl"
+        return "linux"
+    return "other"
+
+
+PLATFORM = _detect_platform()
+IS_MACOS = PLATFORM == "macos"
+IS_WSL = PLATFORM == "wsl"
+IS_LINUX = PLATFORM == "linux"
+IS_WINDOWS = PLATFORM == "windows"
+
+# Default shell on macOS is zsh since Catalina (10.15). On Linux/WSL, it's
+# usually bash. This drives which rc file we edit for the PATH hint + tab-
+# completion activation block.
+DEFAULT_SHELL = os.environ.get("SHELL", "")
+if not DEFAULT_SHELL:
+    if IS_MACOS:
+        DEFAULT_SHELL = "/bin/zsh"
+    elif IS_LINUX or IS_WSL:
+        DEFAULT_SHELL = "/bin/bash"
 
 
 # ─── Output helpers (zero deps, ANSI-only) ─────────────────────────────────
@@ -118,6 +164,43 @@ def humanize_path(p: Path) -> str:
 
 # ─── Steps ───────────────────────────────────────────────────────────────────
 
+def _check_venv_prereqs() -> tuple[bool, str]:
+    """Return (ok, message). On Linux/WSL without python3-venv, the module
+    is missing. On macOS, Homebrew python usually has it bundled. We
+    preflight-check so users get an actionable error instead of a stack
+    trace."""
+    if sys.platform == "win32":
+        # venv is bundled with the official Windows python.org installer
+        return True, ""
+    # Try to import ensurepip + venv — that's the real test
+    r = subprocess.run(
+        [sys.executable, "-c", "import venv, ensurepip; print('ok')"],
+        capture_output=True, text=True,
+    )
+    if r.returncode == 0:
+        return True, ""
+    # Build a platform-specific hint
+    if IS_MACOS:
+        hint = (
+            "On macOS with Homebrew python: brew install python3\n"
+            "On macOS with python.org installer: re-run the official installer\n"
+            "On macOS with pyenv: pyenv install <version>  (venv is included)"
+        )
+    elif IS_LINUX or IS_WSL:
+        # Detect the package manager
+        if Path("/etc/debian_version").exists():
+            hint = "On Debian/Ubuntu/WSL: sudo apt install python3-venv python3-pip"
+        elif Path("/etc/redhat-release").exists() or Path("/etc/fedora-release").exists():
+            hint = "On Fedora/RHEL: sudo dnf install python3-venv python3-pip"
+        elif Path("/etc/arch-release").exists():
+            hint = "On Arch: sudo pacman -S python python-pip"
+        else:
+            hint = "Install python3-venv (and python3-pip) via your distro's package manager"
+    else:
+        hint = "Install python3-venv via your OS package manager"
+    return False, hint
+
+
 def step_create_venv(n: int = 1, total: int = 5) -> None:
     step(n, total, "Creating virtual environment")
     if VENV.exists():
@@ -128,10 +211,20 @@ def step_create_venv(n: int = 1, total: int = 5) -> None:
         venv_py = VENV / "Scripts" / "python.exe"
     else:
         venv_py = VENV / "bin" / "python"
+
+    # Preflight: is the python3-venv module available?
+    ok_pre, hint = _check_venv_prereqs()
+    if not ok_pre:
+        err("Python 'venv' module is not installed on this system")
+        dim(hint)
+        sys.exit(1)
+
     r = run_subprocess([sys.executable, "-m", "venv", str(VENV)])
     if r.returncode != 0:
         err("Failed to create venv")
         print(r.stderr)
+        if "ensurepip" in r.stderr and (IS_LINUX or IS_WSL):
+            dim("On Debian/Ubuntu/WSL this often means: sudo apt install python3-venv")
         sys.exit(1)
     ok(f"Created venv at {humanize_path(VENV)}")
     if not venv_py.exists():
@@ -199,12 +292,21 @@ def step_symlink(n: int = 4, total: int = 5) -> None:
         os.symlink(src, dst)
     ok("argcomplete helpers on PATH (register-python-argcomplete, activate-global-python-argcomplete)")
 
-    # PATH hint
-    if LOCAL_BIN.exists() and os.environ.get("PATH", "").find(str(LOCAL_BIN)) == -1:
-        warn(f"{humanize_path(LOCAL_BIN)} is not on your PATH yet")
-        dim(f"Add this to your ~/.bashrc / ~/.zshrc:")
-        dim(f'    export PATH="{LOCAL_BIN}:$PATH"')
-        dim(f"Then open a new terminal or run:  hash -r")
+    # PATH hint — different files per platform. On macOS, bash_profile is
+    # needed for bash users; on WSL, profile is sometimes the only file
+    # sourced by Windows Terminal login shells.
+    if LOCAL_BIN.exists() and str(LOCAL_BIN) not in os.environ.get("PATH", ""):
+        hint_files = _path_hint_files()
+        if hint_files:
+            file_list = " / ".join(humanize_path(f) for f in hint_files)
+            warn(f"{humanize_path(LOCAL_BIN)} is not on your PATH yet")
+            dim(f"Add this to your {file_list}:")
+            dim(f'    export PATH="{LOCAL_BIN}:$PATH"')
+            dim("Then open a new terminal or run:  hash -r")
+        else:
+            # No rc files found to hint about — give a one-liner
+            warn(f"{humanize_path(LOCAL_BIN)} is not on your PATH yet")
+            dim(f'Add this to your shell startup: export PATH="{LOCAL_BIN}:$PATH"')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -232,16 +334,64 @@ FISH_COMPLETION_FILE = FISH_COMPLETION_DIR / "hr.fish"
 
 
 def _bash_zsh_targets() -> list[Path]:
-    """Return rc files for shells that source from bashrc/zshrc.
+    """Return rc files we should activate tab-completion in.
 
-    Skip if the file doesn't exist AND we don't have a way to write a fresh
-    one (we don't want to create ~/.bashrc from scratch — too invasive).
+    Strategy per platform:
+      - Linux / WSL:  ~/.bashrc (most distros), ~/.zshrc (zsh users)
+      - macOS:        ~/.zshrc (default since Catalina), ~/.bash_profile
+                      (bash users), ~/.bashrc (sourced from bash_profile)
+      - Both:         ~/.profile as a POSIX fallback (sourced by some
+                      login shells when bashrc/zshrc don't apply).
+
+    We only return files that already exist — we don't create them from
+    scratch (too invasive; user might be using a custom config layout).
     """
+    home = Path.home()
+    candidates = [
+        home / ".zshrc",          # zsh (default on modern macOS)
+        home / ".bashrc",         # bash (Linux default, macOS via Homebrew)
+        home / ".bash_profile",   # macOS bash login shell
+        home / ".zprofile",       # zsh login shell (macOS)
+        home / ".profile",        # POSIX fallback (some WSL/Debian setups)
+    ]
     out = []
-    for path in (Path.home() / ".bashrc", Path.home() / ".zshrc"):
-        if path.exists():
-            out.append(path)
+    seen = set()
+    for path in candidates:
+        try:
+            if path.exists() and path.resolve() not in seen:
+                seen.add(path.resolve())
+                out.append(path)
+        except OSError:
+            continue
     return out
+
+
+def _path_hint_files() -> list[Path]:
+    """Return rc files we should hint about adding ~/.local/bin to PATH.
+
+    Different from _bash_zsh_targets because:
+      - macOS bash users need ~/.bash_profile (not ~/.bashrc — bash_profile
+        sources .bashrc only on new bash, and macOS ships old bash).
+      - WSL users sometimes need ~/.bashrc AND ~/.profile because login
+        shells (via Windows Terminal) skip bashrc.
+    """
+    home = Path.home()
+    files = []
+    if IS_MACOS:
+        # macOS users on bash need bash_profile; zsh users need zshrc.
+        if "zsh" in DEFAULT_SHELL:
+            files.append(home / ".zshrc")
+        else:
+            files.append(home / ".bash_profile")
+    elif IS_WSL:
+        # WSL Windows Terminal opens login shells → .profile is sometimes
+        # the only thing sourced. Cover both.
+        files.extend([home / ".bashrc", home / ".profile"])
+    else:
+        # Linux: bashrc covers interactive non-login shells; profile
+        # covers login shells (e.g. SSH). Both is safer.
+        files.extend([home / ".bashrc", home / ".profile"])
+    return [f for f in files if f.exists()]
 
 
 def _replace_block(path: Path, begin: str, end: str, new_block: str) -> bool:
@@ -417,7 +567,7 @@ import subprocess
 from pathlib import Path
 
 PLUGIN_NAME = "hermes-router"
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 
 
 def _find_project() -> Path:
@@ -778,9 +928,50 @@ def cmd_install(args) -> int:
     banner("hermes-router installer")
     dim(f"Source:   {humanize_path(ROOT)}")
     dim(f"Python:   {sys.executable} ({sys.version.split()[0]})")
-    dim(f"Platform: {sys.platform}")
+    # Show a richer platform label than raw sys.platform
+    if PLATFORM == "wsl":
+        # Try to detect WSL version
+        try:
+            with open("/proc/version") as f:
+                v = f.read().lower()
+            wsl_ver = "WSL2" if "wsl2" in v else "WSL1" if "wsl1" in v else "WSL"
+        except OSError:
+            wsl_ver = "WSL"
+        platform_label = f"linux ({wsl_ver})"
+    elif PLATFORM == "macos":
+        mac_ver = platform.mac_ver()[0] or "unknown"
+        platform_label = f"macos {mac_ver}"
+    else:
+        platform_label = sys.platform
+    dim(f"Platform: {platform_label}")
+    if DEFAULT_SHELL:
+        dim(f"Shell:    {DEFAULT_SHELL}")
     if not USE_COLOR:
         dim("(output: plain text — pass --no-color to disable ANSI)")
+
+    # WSL-specific warnings
+    if IS_WSL:
+        print()
+        warn("WSL detected. Notes:")
+        dim("  • WSL's PATH may include Windows paths (/mnt/c/...) — that's fine")
+        dim("    but `which python3` should point to a Linux Python, not /mnt/c/.")
+        dim("  • Login shells opened from Windows Terminal may skip ~/.bashrc")
+        dim("    and only source ~/.profile — we activate both.")
+
+    # macOS-specific warnings
+    if IS_MACOS:
+        print()
+        warn("macOS detected. Notes:")
+        mac_zsh = "/bin/zsh" in DEFAULT_SHELL
+        if mac_zsh:
+            dim("  • Default shell is zsh — we activate ~/.zshrc")
+        else:
+            dim("  • Default shell is bash — we activate ~/.bash_profile")
+            dim("    (macOS bash does NOT source ~/.bashrc from login shells)")
+        dim("  • If `python3` is missing, install via Homebrew:")
+        dim("      brew install python3")
+        dim("    or use pyenv for version management.")
+
     print()
 
     n = 0
