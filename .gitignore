@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+
+# Virtual envs
+.venv/
+venv/
+env/
+.env
+
+# The router's persistent state (auto-generated)
+budget.json
+tmp/
+tests/_tmp/
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
