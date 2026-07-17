@@ -5,10 +5,10 @@ Why this exists:
   A single, copy-pasteable one-liner to install hermes-router without
   needing git clone first:
 
-    cd ~/projects   # pick where hermes-router/ will appear
+    cd ~/projects   # pick where .hermes-router/ will appear
     python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
 
-  Creates a hermes-router/ subdirectory in your current folder by default.
+  Creates a .hermes-router/ subdirectory in your current folder by default (hidden).
 
 What's special about this bootstrap:
   * Pure Python (stdlib only) -- no shell, no `curl | bash`.
@@ -77,7 +77,7 @@ def main(argv):
     ap.add_argument("--dry-run", action="store_true",
                     help="download + verify only; don't actually run install.py")
     ap.add_argument("--prefix", default=".",
-                    help="target directory (default: ./hermes-router/ — auto-creates a subdir)")
+                    help="target directory (default: ./.hermes-router/ — auto-creates a hidden subdir)")
     # Everything after `--` is forwarded as a single shell-style argv list
     # to install.py. argparse's `nargs='+'` is too clunky for this.
     # Split argv at '--': everything before is for us, everything after
@@ -181,7 +181,7 @@ def main(argv):
     # still errors out (safety).
     is_default_prefix = args.prefix == "."
     if os.path.exists(prefix) and is_default_prefix:
-        prefix = os.path.join(prefix, "hermes-router")
+        prefix = os.path.join(prefix, ".hermes-router")
         _print_status("info", f"📁 Installing into {prefix}")
     parent = os.path.dirname(prefix)
     os.makedirs(parent, exist_ok=True)

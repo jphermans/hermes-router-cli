@@ -82,10 +82,10 @@ trace.
 
 One-liner — no `git clone` needed. The bootstrap downloads the latest tarball
 from GitHub, verifies it, and runs `install.py`. By default it creates a
-**`hermes-router/`** subdirectory in your current folder:
+**`.hermes-router/`** hidden folder in your current directory:
 
 ```bash
-cd ~/projects               # 👈 pick where hermes-router/ will appear
+cd ~/projects               # 👈 pick where .hermes-router/ will appear
 python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
 ```
 
@@ -103,7 +103,7 @@ For scripts and CI, pass the exact commit SHA and tarball hash:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py \
-  | python3 - --sha=<tarball-sha> --prefix=./hermes-router
+  |  python3 - --sha=<tarball-sha> --prefix=./.hermes-router
 ```
 
 ### Forwarding install flags
@@ -119,29 +119,32 @@ python3 -c "$(curl -fsSL ...)" -- --no-symlink --no-color
 1. ⬇️ Downloads the latest tarball from `codeload.github.com/<repo>/tar.gz/main`
 1. 🔐 Verifies SHA-256 (when `--sha=` is provided; otherwise warns with the digest)
 1. 📦 Extracts the tarball into a temp dir
-1. 📂 Moves the extracted project to `--prefix` (default: `./hermes-router/`)
+1. 📂 Moves the extracted project to `--prefix` (default: `./.hermes-router/`)
 1. 🚀 Runs `install.py install` from that prefix, forwarding all extra args
 1. 🧹 Cleans up the temp dir
 
 The result is a fully installed hermes-router project directory with a
 working `.venv/` inside it, ready to use.
 
-> **Where does it install?** By default it creates a **`hermes-router/`**
-> subdirectory in your current folder. Just cd where you want the project
+> **Where does it install?** By default it creates a **`.hermes-router/`**
+> hidden folder in your current directory. Just cd where you want the project
 > to live, then run the one-liner:
 >
 > ```bash
-> cd ~/projects          # 👈 choose where hermes-router/ will appear
+> cd ~/projects          # 👈 choose where .hermes-router/ will appear
 > python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
 > ```
 >
 > ```
 > ...
-> 📁 Installing into /home/you/projects/hermes-router
+> 📁 Installing into /home/you/projects/.hermes-router
 > ...
 > ```
 >
 > Use `--prefix` to override: `--prefix ~/my-custom-location`.
+>
+> > 💡 **Hidden folder = safe from accidental deletion.** `ls` won't show it,
+> > `rm -rf *` won't touch it. Use `ls -a` or `ls -d .hermes-router/` to find it.
 
 ---
 
@@ -222,7 +225,7 @@ be explicit:
 | What | Installed at | How to use it |
 |---|---|---|
 | **CLI** (`hr`) | `~/.local/bin/hr` (symlink) | Type `hr route`, `hr doctor`, `hr models` in your terminal |
-| **Project** | `./hermes-router/` (where you ran the install) | Contains `.venv/`, `config.yaml`, source code |
+| **Project** | `./.hermes-router/` (where you ran the install) | Contains `.venv/`, `config.yaml`, source code |
 | **Plugin** (Hermes Agent) | `~/.hermes/plugins/hermes-router/` | Installed by `install.py`, enable with `hermes plugins enable hermes-router` |
 | **Plugin tools** | Loaded by Hermes at session start | Say "hr_doctor" to the agent — no `/hr` commands |
 
