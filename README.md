@@ -10,12 +10,17 @@
 [![Providers](https://img.shields.io/badge/providers-11-2ea44f)](config.yaml)
 [![Models](https://img.shields.io/badge/models-37-2ea44f)](config.yaml)
 [![Sub-commands](https://img.shields.io/badge/subcommands-7-blue)](#-usage)
-[![Tests](https://img.shields.io/badge/tests-21%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-28%20passing-brightgreen)](tests/)
+[![Plugin](https://img.shields.io/badge/Hermes%20Plugin-1.0.0-8A2BE2)](#-hermes-agent-plugin)
 [![Cost](https://img.shields.io/badge/$0%2Ftoken-free%20pool-2ea44f)](#-free-vs-paid--the-one-knob)
 
 A Python CLI that **routes any prompt to the cheapest LLM that can answer it**,
 across **11 OpenAI-compatible providers** you already have keys for.
 Built on top of the keys Hermes stored for you — no re-exporting needed.
+
+Comes in two flavours: a **standalone CLI** (`hr` — for your terminal) and a
+**Hermes Agent plugin** (`hr_route`, `hr_models`, `hr_doctor` — tools Hermes
+can call). Same engine, different surfaces.
 
 </div>
 
@@ -25,6 +30,7 @@ Built on top of the keys Hermes stored for you — no re-exporting needed.
 
 1. [🌟 Why this exists](#-why-this-exists)
 1. [⚡ Quick start: curl → install](#-quick-start-curl--install)
+1. [🧩 Hermes Agent plugin](#-hermes-agent-plugin)
 1. [📦 Install](#-install)
 1. [🗑️ Uninstall](#-uninstall)
 1. [🔑 Where keys come from](#-where-keys-come-from)
@@ -122,10 +128,76 @@ working `.venv/` inside it, ready to use.
 
 ---
 
+## 🧩 Hermes Agent plugin
+
+hermes-router also ships as a **Hermes Agent plugin** — this gives Hermes
+access to `hr_route`, `hr_models`, and `hr_doctor` as native Hermes tools.
+
+### How it works
+
+| Layer | What it does |
+|---|---|
+| **Hermes Agent** (`~/.hermes/config.yaml`) | routes *itself* through its own model picker (Minimax, DeepSeek, etc.) |
+| **hermes-router plugin** (`~/.hermes/plugins/hermes-router/`) | adds `hr_route` / `hr_models` / `hr_doctor` tools that Hermes *may* call |
+| **hermes-router CLI** (`hr`) | standalone terminal tool — you use it directly |
+
+> The plugin does **not** replace Hermes' own model selection. Hermes still
+> picks its own model via `config.yaml`. The plugin gives Hermes the *option*
+> to route specific prompts through hermes-router's cost-aware pool.
+
+### Install
+
+The plugin lives in `~/.hermes/plugins/hermes-router/` and must be enabled:
+
+```bash
+hermes plugins enable hermes-router        # ✅ enable after install
+hermes plugins list | grep hermes-router    # should show "enabled"
+```
+
+After enabling, start a **new Hermes session** (`/reset` in chat, or exit and
+re-launch). The three tools — `hr_route`, `hr_models`, `hr_doctor` — will
+appear in Hermes' tool list (`hermes tools list`).
+
+### Available tools
+
+| Tool | What it does | When to use |
+|---|---|---|
+| `hr_route(prompt, cost_class, tier, ...)` | Routes a prompt through the cheapest capable model | "Route this through the free pool" |
+| `hr_models(cost_class, tier)` | Lists available models across all providers | "Which free models do I have?" |
+| `hr_doctor()` | Health check — providers, keys, config | "Is everything working?" |
+
+### Using the tools in a Hermes session
+
+Once the plugin is enabled and you've started a new session, just tell Hermes:
+
+> "Use the free pool to translate this: Hello → French"
+
+Hermes will see `hr_route` is available and call it as needed. You can also
+ask explicitly:
+
+> "Run `hr_doctor` to check my providers"
+> "Show me `hr_models` with only free providers"
+> "Route this through the paid pool: Write a React component"
+
+### What the plugin shares with Hermes
+
+- **API keys** — same `~/.hermes/.env` (set once, works for both)
+- **Config** — hermes-router reads `config.yaml` from its own project dir
+- **venv** — the `.venv/` inside `/home/jphermans/documents/hermes-router/`
+
+### Uninstall
+
+```bash
+hermes plugins disable hermes-router        # disable without removing
+hermes plugins remove hermes-router         # delete the plugin entirely
+```
+
+---
+
 ## 📦 Install
 
 ```bash
-git clone https://github.com/<you>/hermes-router.git
+git clone https://github.com/jphermans/hermes-router.git
 cd hermes-router
 python3 install.py                  # 🚀 colour output, full setup
 ```
