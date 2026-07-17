@@ -32,6 +32,8 @@ def add_subparser(sub):
                    help="Render a human-readable summary instead of raw JSON.")
     p.add_argument("--auto-fallback", action="store_true",
                    help="If --class free fails, automatically retry with --class paid.")
+    p.add_argument("--max-cost", type=float, default=None, metavar="USD",
+                   help="Skip candidates whose estimated cost exceeds this (USD).")
     p.set_defaults(func=run)
     return p
 
@@ -73,6 +75,7 @@ def run(args: argparse.Namespace) -> int:
         images=args.images or None,
         force_vision=args.vision,
         auto_fallback=args.auto_fallback,
+        max_cost_usd=args.max_cost,
     )
     if args.pretty:
         print(_render_pretty(result))

@@ -11,6 +11,7 @@ Sub-commands:
   doctor     quick configuration health check
   budget     show this month's spend per provider
   chat       interactive REPL — type prompts, get answers
+  init       interactive setup wizard for new users
 """
 from __future__ import annotations
 
@@ -23,7 +24,7 @@ from . import __version__
 
 def _load_commands():
     """Lazy-import each sub-command module + register it."""
-    from .commands import route_cmd, models_cmd, verify_cmd, auth_cmd, doctor_cmd, budget_cmd, chat_cmd
+    from .commands import route_cmd, models_cmd, verify_cmd, auth_cmd, doctor_cmd, budget_cmd, chat_cmd, init_cmd
     return {
         "route": route_cmd,
         "models": models_cmd,
@@ -32,6 +33,7 @@ def _load_commands():
         "doctor": doctor_cmd,
         "budget": budget_cmd,
         "chat": chat_cmd,
+        "init": init_cmd,
     }
 
 

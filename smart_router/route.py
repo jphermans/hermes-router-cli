@@ -352,12 +352,14 @@ def route(
     force_vision: Optional[bool] = None,
     cfg: Optional[dict] = None,
     auto_fallback: bool = False,
+    max_cost_usd: Optional[float] = None,
 ) -> dict:
     """Route a prompt through the configured providers.
 
     cost_class:  'free' (default subscription/prepaid pool), 'paid', or 'any'.
     images:      list of URLs or data URLs for vision prompts.
     auto_fallback: if True and cost_class='free' fails, retry with 'paid'.
+    max_cost_usd: if set, skip candidates whose estimated cost exceeds this.
     """
     cfg = cfg if cfg is not None else load_config()
     max_out = min(max_out, cfg.get("policy", {}).get("max_output_tokens", 1024))
@@ -384,10 +386,19 @@ def route(
                 f"Run `hr doctor` to see what's missing."
             )
 
+    # Filter by max_cost_usd if set
+    skipped_for_cost = []
+    if max_cost_usd is not None:
+        before = len(plan)
+        plan = [c for c in plan if c.est_cost <= max_cost_usd]
+        skipped_for_cost = before - len(plan)
+
     out: dict = {
         "classified_tier": chosen_tier,
         "cost_class": cost_class,
         "debug": debug,
+        "max_cost_usd": max_cost_usd,
+        "skipped_for_cost": skipped_for_cost,
         "plan": [
             {
                 "rank": i + 1, "provider": c.provider, "model": c.model,
@@ -398,6 +409,14 @@ def route(
             for i, c in enumerate(plan)
         ],
     }
+    if not plan and max_cost_usd is not None:
+        out["ok"] = False
+        out["error"] = (
+            f"No candidates within max_cost=${max_cost_usd}. "
+            f"{skipped_for_cost} candidate(s) were filtered out. "
+            f"Try a higher --max-cost or use --class free."
+        )
+        return out
     if dry_run:
         out["dry_run"] = True
         return out
