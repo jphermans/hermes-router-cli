@@ -424,13 +424,18 @@ def _route_impl(
 ) -> str:
     """Internal: shared logic for hr_route and hr_route_default."""
     venv = PROJECT / ".venv" / "bin" / "python3"
+    # The CLI's --tier only accepts cheap|standard|pro (or no value, letting
+    # the heuristic classifier decide). 'auto' means "let the classifier
+    # decide", so we omit --tier from the argv in that case.
+    tier_arg = tier if tier and tier != "auto" else None
     if venv.exists():
         cmd = [str(venv), "-m", "smart_router.__main__", "route",
-               "--prompt", prompt, "--class", cost_class, "--tier", tier,
-               "--max-tokens", str(max_tokens)]
+               "--prompt", prompt, "--class", cost_class, "--max-tokens", str(max_tokens)]
     else:
         cmd = [str(HR_BIN), "route", "--prompt", prompt, "--class", cost_class,
-               "--tier", tier, "--max-tokens", str(max_tokens)]
+               "--max-tokens", str(max_tokens)]
+    if tier_arg:
+        cmd += ["--tier", tier_arg]
     if dry_run:
         cmd.append("--dry-run")
     if pretty:
