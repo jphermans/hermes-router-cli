@@ -426,11 +426,11 @@ def _route_impl(
     venv = PROJECT / ".venv" / "bin" / "python3"
     if venv.exists():
         cmd = [str(venv), "-m", "smart_router.__main__", "route",
-               "--prompt", prompt, "--class", cost_class, "--model-tier", tier,
+               "--prompt", prompt, "--class", cost_class, "--tier", tier,
                "--max-tokens", str(max_tokens)]
     else:
         cmd = [str(HR_BIN), "route", "--prompt", prompt, "--class", cost_class,
-               "--model-tier", tier, "--max-tokens", str(max_tokens)]
+               "--tier", tier, "--max-tokens", str(max_tokens)]
     if dry_run:
         cmd.append("--dry-run")
     if pretty:
