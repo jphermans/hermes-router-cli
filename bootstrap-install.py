@@ -29,6 +29,7 @@ import argparse
 import hashlib
 import io
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -189,7 +190,7 @@ def main(argv):
         try: import shutil as _sh; _sh.rmtree(tmp, ignore_errors=True)
         except Exception: pass
         return 7
-    os.rename(project_dir, prefix)
+    shutil.move(project_dir, prefix)
     # Clean up the now-empty tmp (only the top-level dir's parent remains).
     try:
         import shutil as _sh; _sh.rmtree(tmp, ignore_errors=True)
