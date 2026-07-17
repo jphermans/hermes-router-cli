@@ -81,11 +81,11 @@ trace.
 ## ⚡ Quick start: curl → install
 
 One-liner — no `git clone` needed. The bootstrap downloads the latest tarball
-from GitHub, verifies it, and runs `install.py` — all into
-`/home/jphermans/documents/hermes-router/` (Hermes Agent has MCP filesystem
-access there):
+from GitHub, verifies it, and runs `install.py`. By default it creates a
+**`hermes-router/`** subdirectory in your current folder:
 
 ```bash
+cd ~/projects               # 👈 pick where hermes-router/ will appear
 python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
 ```
 
@@ -119,20 +119,26 @@ python3 -c "$(curl -fsSL ...)" -- --no-symlink --no-color
 1. ⬇️ Downloads the latest tarball from `codeload.github.com/<repo>/tar.gz/main`
 1. 🔐 Verifies SHA-256 (when `--sha=` is provided; otherwise warns with the digest)
 1. 📦 Extracts the tarball into a temp dir
-1. 📂 Moves the extracted project to `--prefix` (default: current directory `.`)
+1. 📂 Moves the extracted project to `--prefix` (default: `./hermes-router/`)
 1. 🚀 Runs `install.py install` from that prefix, forwarding all extra args
 1. 🧹 Cleans up the temp dir
 
 The result is a fully installed hermes-router project directory with a
 working `.venv/` inside it, ready to use.
 
-> **Where does it install?** By default, the project is extracted into your
-> **current working directory** (the folder you're in when you run the curl
-> command). Cd to where you want it first, e.g.:
+> **Where does it install?** By default it creates a **`hermes-router/`**
+> subdirectory in your current folder. Just cd where you want the project
+> to live, then run the one-liner:
 >
 > ```bash
-> cd ~/projects          # 👈 choose your install location
-> python3 -c "$(curl -fsSL ...)"
+> cd ~/projects          # 👈 choose where hermes-router/ will appear
+> python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"
+> ```
+>
+> ```
+> ...
+> 📁 Installing into /home/you/projects/hermes-router
+> ...
 > ```
 >
 > Use `--prefix` to override: `--prefix ~/my-custom-location`.
