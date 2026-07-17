@@ -1,162 +1,180 @@
-# hermes-router
+<div align="center">
+
+# 🪶 hermes-router
 
 > **A simple LLM router that picks the cheapest capable model — and lets you
 > always choose between the free pool and the paid pool.**
 
-hermes-router is a lightweight Python CLI. Given a prompt, it picks a
-provider/model that can answer it well enough **at the lowest cost**, calls it,
-and only spends a real API token when you ask it to. If that model fails, it
-falls back through a curated chain — *not* a random retry storm.
+[![Python](https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
+[![Providers](https://img.shields.io/badge/providers-11-2ea44f)](config.yaml)
+[![Models](https://img.shields.io/badge/models-37-2ea44f)](config.yaml)
+[![Sub-commands](https://img.shields.io/badge/subcommands-7-blue)](#-usage)
+[![Tests](https://img.shields.io/badge/tests-21%20passing-brightgreen)](tests/)
+[![Cost](https://img.shields.io/badge/$0%2Ftoken-free%20pool-2ea44f)](#-free-vs-paid--the-one-knob)
 
-It has one knob you can always reach for:
+A Python CLI that **routes any prompt to the cheapest LLM that can answer it**,
+across **11 OpenAI-compatible providers** you already have keys for.
+Built on top of the keys Hermes stored for you — no re-exporting needed.
 
-```
---class free     # subscription / prepaid / free tier  ($0 per token)
---class paid     # billed per token                     (USD per 1M)
---class any      # pick the cheapest of both             (default)
-```
+</div>
 
-That choice is the whole point: you always decide which world you're routing
-in. Free isn't a fallback for paid — they're two separate pools you pick between.
+---
 
-```
-   prompt ──► classifier ──► free or paid pool ──► ranked plan
-                                                       │
-              200 + text  ◄──── call + retry + fallback
-                                                       │
-                                          ┌────────────┴────────────┐
-                                          ▼                         ▼
-                                    succeeded?              try curated chain
-                                          │                then broader sweep
-                                          ▼                         │
-                                       done  ◄──────────────────────┘
-```
+## 🌊 Table of contents
 
-## Why this exists
+1. [🌟 Why this exists](#-why-this-exists)
+1. [📦 Install](#-install)
+1. [🗑️ Uninstall](#-uninstall)
+1. [🔑 Where keys come from](#-where-keys-come-from)
+1. [🎯 Usage](#-usage)
+1. [🧠 How it picks](#-how-it-picks)
+1. [🐍 Programmatic use](#-programmatic-use)
+1. [⚙️ Configuration](#-configuration)
+1. [🧪 Testing](#-testing)
+1. [⚠️ Known quirks](#-known-quirks)
+1. [📜 Background](#-background)
+1. [📄 License](#-license)
+
+---
+
+## 🌟 Why this exists
+
+> _"A simple hermes-router that works flawlessly."_  — you, today
 
 There are a lot of LLM providers now. Many of them are *free right now* if you
-sit on the right subscription — z.ai's Coding Plan, GitHub Models' free tier,
-Gemini's flash quota, etc. But you have to know each one's quirks: which models
-they expose, what the request format looks like, whether the token actually
-costs money.
+sit on the right subscription — **z.ai's Coding Plan**, **GitHub Models' free tier**,
+**Gemini's flash quota**, **Kilo Code's monthly prepaid**, etc. But you have to
+know each one's quirks: which models they expose, what the request format
+looks like, whether the token actually costs money.
 
-`hermes-router` collects this so you don't have to. Run `hr models` and you'll
+**`hermes-router` collects this so you don't have to.** Run `hr models` and you'll
 see everything that's wired up at a glance. Run `hr route --class free` and you
 get the cheapest free answer that still meets the capability bar. Run
 `hr route --class paid` when you need a model the free tier doesn't expose.
 
-Crucially: the route either succeeds **or** reports every model it tried and
-why each one failed. There's no silent "I gave up" — the response includes a
-`fallbacks_tried` trace.
+The router **either succeeds** or **reports every model it tried and why each one
+failed** — no silent "I gave up". Every response includes a `fallbacks_tried`
+trace.
 
-## Install
+### ✨ Feature highlights
+
+| Feature | Symbol | Meaning |
+|---|---|---|
+| **Free vs paid pool**              | 🟢🟡 | Always pick; never silent surprise bills |
+| **Multi-key rotation**            | 🔑     | One provider, N keys, automatic failover |
+| **Fail-fast on permanent errors** | ⚡     | 404 → 1 attempt, not 16. No retry storms. |
+| **Circuit breaker**                | 🛡️     | 3+ retryable failures → skip for the rest of the call |
+| **Hermes auth integration**       | 🪶     | Reads `~/.hermes/.env` + `~/.hermes/auth.json` automatically |
+| **Vision routing**                 | 👁     | Auto-pick VLMs when images are attached |
+| **Zero new dependencies**          | 🪶     | Just PyYAML. Nothing else. |
+
+---
+
+## 📦 Install
 
 ```bash
 git clone https://github.com/<you>/hermes-router.git
 cd hermes-router
-python3 install.py                  # colour output, full setup
+python3 install.py                  # 🚀 colour output, full setup
 ```
 
 That single command does everything:
-1. Creates a `.venv` (re-uses an existing one if present)
-2. Installs PyYAML into it
-3. Marks `hr` executable
-4. Symlinks `~/.local/bin/hr` so `hr` works from anywhere on your PATH
-5. Runs `hr doctor` and prints a colourised health report
 
-It's idempotent — running it again detects existing state and skips the work.
-Useful flags:
+1. 🐍 **Creates a `.venv`** (re-uses an existing one if present)
+1. 📚 **Installs PyYAML** into it
+1. 🔓 **Marks `hr` executable**
+1. 🔗 **Symlinks `~/.local/bin/hr`** so `hr` works from anywhere on your PATH
+1. 🩺 **Runs `hr doctor`** and prints a colourised health report
+
+It's **idempotent** — running it again detects existing state and skips the work.
+
+### 🛠️ Other install styles
 
 ```bash
-python3 install.py --no-color      # plain text (or set NO_COLOR=1)
-python3 install.py --no-symlink    # don't touch ~/.local/bin
-python3 install.py --no-doctor     # skip the post-install health check
+python3 install.py --no-color      # 📄 plain text (or set NO_COLOR=1)
+python3 install.py --no-symlink    # 🔓 skip ~/.local/bin
+python3 install.py --no-doctor     # 🩺 skip the post-install health check
 ```
 
-If you prefer the manual path:
+If you'd rather not use the installer:
 
 ```bash
 cd hermes-router
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+ln -s "$(pwd)/hr" ~/.local/bin/hr   # optional — for `hr` on PATH
 ```
 
-If you'd rather not use the installer, just symlink `hr` from this directory
-into anything on your `$PATH`:
+---
 
-```bash
-ln -s "$(pwd)/hr" ~/.local/bin/hr
-```
-
-## Uninstall
+## 🗑️ Uninstall
 
 The same script uninstalls too. By design it's conservative — it won't delete
 the project, your config, or your `.venv/` unless you ask for it.
 
 ```bash
-python3 install.py uninstall --dry-run       # see what would be removed
-python3 install.py uninstall                 # remove ~/.local/bin/hr (interactive confirm)
-python3 install.py uninstall --yes --purge    # also delete ./venv/ (no venv left behind)
+python3 install.py uninstall --dry-run       # 👀 see what would be removed
+python3 install.py uninstall                 # 🗑️  remove ~/.local/bin/hr (interactive confirm)
+python3 install.py uninstall --yes --purge    # 🔥 also delete ./venv/ (no venv left behind)
 ```
 
 What gets removed, in order:
 
-1. `~/.local/bin/hr` — but only if it actually points at this project. If
-   it's a symlink to something else, or a regular file with that name,
-   it's left alone. (Safety: never touch another tool's `hr`.)
-2. `./venv/` — only when you pass `--purge`. The venv is preserved by default
-   because re-installing it later is the slow step.
-3. The whole project directory — only when you pass `--purge-project`, and
-   never while you're CWD-inside it. **This is the nuclear option.**
+| # | Target | When | Safety |
+|---|---|---|---|
+| 1️⃣ | `~/.local/bin/hr` | always — if it points at this project | Skips foreign symlinks; skips regular files; checks resolve target |
+| 2️⃣ | `./venv/` | only with `--purge` | Venv is preserved by default (re-installing is the slow step) |
+| 3️⃣ | project dir | only with `--purge-project`, never from inside cwd | "**This is the nuclear option.**" |
 
 Re-running is safe: missing items are reported and skipped.
 
-### Where keys come from
+---
 
-The router reads API keys in three places, in order:
+## 🔑 Where keys come from
 
-| Source | What lives there | Who writes it |
-|---|---|---|
-| **process env** (`GLM_API_KEY=...`) | whatever you `export` in your shell, CI, `systemd --setenv`, etc. | you, manually |
-| **`~/.hermes/.env`** | all Hermes' keys in dotenv form | `hermes auth add`, your hand |
-| **`~/.hermes/auth.json`** | Hermes' structured credential pool | `hermes auth add`, Hermes itself |
+The router reads API keys in **three places**, in priority order:
 
-If `hermes` already has keys configured, `hr route` picks them up automatically —
-you do not need to re-export anything. Just run `hr route --prompt "..."` and it
-will discover whichever providers have keys present.
+| # | Source | What lives there | Who writes it |
+|---|---|---|---|
+| 1️⃣ | **process env** (`GLM_API_KEY=...`) | whatever you `export` in your shell, CI, `systemd --setenv`, etc. | you, manually |
+| 2️⃣ | **`~/.hermes/.env`** 🏠 | all Hermes' keys in dotenv form | `hermes auth add`, your hand |
+| 3️⃣ | **`~/.hermes/auth.json`** 📋 | Hermes' structured credential pool | `hermes auth add`, Hermes itself |
+
+If Hermes already has keys configured, `hr route` picks them up automatically —
+**you don't need to re-export anything**. Just run `hr route --prompt "..."`
+and it will discover whichever providers have keys present.
 
 You can override the file paths for testing or container setups:
 
 ```bash
-export HERMES_ENV_FILE=/etc/hermes/keys.env       # default: ~/.hermes/.env
-export HERMES_AUTH_FILE=/etc/hermes/auth.json     # default: ~/.hermes/auth.json
+export HERMES_ENV_FILE=/etc/hermes/keys.env       # 🏠  default: ~/.hermes/.env
+export HERMES_AUTH_FILE=/etc/hermes/auth.json     # 📋  default: ~/.hermes/auth.json
 ```
 
-### Configure your API keys manually
+### 🔧 Configure your API keys manually
 
 If you don't use `hermes auth add`, you can set them yourself. Pick whichever
 form fits you — all three work and merge automatically:
 
 ```bash
-# single key — singular form
-export GLM_API_KEY=sk-...
-
-# multiple keys — plural form
-export OPENROUTER_API_KEYS=sk-1,sk-2,sk-3
-
-# also numbered: OPENROUTER_API_KEY_2, _3, ...
+export GLM_API_KEY=sk-...               # 🔑 single key — singular form
+export OPENROUTER_API_KEYS=sk-1,sk-2,sk-3   # 🔑🔑 multiple keys — plural form
+export OPENROUTER_API_KEY_2=sk-2         # 🔑 also numbered: KEY_2, KEY_3, ...
 ```
 
 If you keep keys in `~/.hermes/.env`, `hr auth` will scan it for you:
 
 ```bash
-hr auth                # show which keys are present (values masked)
-hr auth --show         # show last-4 of each key
+hr auth                # 🔒 show which keys are present (values masked)
+hr auth --show         # 🔓 show last-4 of each key
 ```
 
-## Usage
+---
 
-### Dry-run — see the plan, spend nothing
+## 🎯 Usage
+
+### 🔍 Dry-run — see the plan, spend nothing
 
 ```bash
 hr route --prompt "Translate 'hello' to French" --dry-run --pretty
@@ -171,18 +189,15 @@ hr route --prompt "Translate 'hello' to French" --dry-run --pretty
    ...
 ```
 
-The `class` column on the right tells you which pool each candidate comes from.
+The `class` column tells you which pool each candidate comes from.
 `$0.000000` free models always rank above priced ones because cost dominates
 the sort.
 
-### Real call
+### 🤖 Real call
 
 ```bash
 hr route --prompt "Translate 'hello' to French" --pretty
 ```
-
-Returns the chosen provider/model, the answer, usage in tokens, and the chain
-of attempts if there were any failures.
 
 ```
 ✓ zai/glm-4.5-air  (~$0.000000, 1 tries)
@@ -190,133 +205,140 @@ of attempts if there were any failures.
 "Bonjour."
 ```
 
-### Choose the pool explicitly
+### 🎯 Choose the pool explicitly
 
 ```bash
-hr route --prompt "Summarize this PDF" --class free --tier standard
-hr route --prompt "Reason step-by-step about this proof" --class paid --tier pro
+hr route --prompt "Summarize this PDF" --class free --tier standard   # 🟢 free pool only
+hr route --prompt "Reason step-by-step about this proof" \           # 🟡 paid pool only
+            --class paid --tier pro
+hr route --prompt "Quick translation" --class any --tier cheap       # 🌐 cheapest anywhere
 ```
 
 `--tier` overrides the heuristic classifier (`cheap` / `standard` / `pro`).
-`--class` selects the pool. Use both when the auto-pick isn't what you want.
+`--class` selects the pool.
 
-### Force a specific model
-
-If you just want to call one model directly without routing, `hr` isn't the
-right tool — but `route()` will accept any candidate in the plan. Forcing a
-specific provider is out of scope; this is a *router*.
-
-### Vision prompts
+### 👁 Vision prompts
 
 ```bash
-hr route --prompt "What's in this image?" --image https://.../photo.jpg --pretty
-hr route --prompt "OCR this" --vision --image data:image/png;base64,...
+hr route --prompt "What's in this image?" --image https://.../photo.jpg --pretty     # 🌍 URL
+hr route --prompt "OCR this" --vision --image data:image/png;base64,...               # 🧬 data URL
 ```
 
 The router only sends vision prompts to `vision: true` models. The same
 `--class free|paid|any` filter applies within the vision pool.
 
-### Other sub-commands
+### 🧰 Other sub-commands
 
-```bash
-hr models                          # table of every configured model
-hr models --class free --tier pro  # filtered
-hr models --with-keys-only         # skip providers whose key isn't set
-hr verify                          # 1-token ping every model (slow; sanity check)
-hr doctor                          # config + auth + coverage report
-hr budget                          # this month's spend per provider
-hr chat                            # REPL: prompt, get answer, repeat
-hr auth                            # which providers have keys
-```
+| Command | What it does |
+|---|---|
+| `hr models`                          | 📚 table of every configured model |
+| `hr models --class free --tier pro`  | 🎯 filtered |
+| `hr models --with-keys-only`         | 🔑 skip providers whose key isn't set |
+| `hr verify`                          | 🩺 1-token ping every model (slow; sanity check) |
+| `hr doctor`                          | 🩺 config + auth + coverage report |
+| `hr budget`                          | 💰 this month's spend per provider |
+| `hr chat`                            | 💬 interactive REPL — type prompts, get answers |
+| `hr auth`                            | 🔐 which providers have keys |
 
-`hr chat` opens a loop; type prompts, get answers. Ctrl-D to exit.
+`hr chat` opens a loop; type prompts, get answers. **Ctrl-D to exit.**
 
-## How it picks
+---
 
-1. **Classify** the prompt into a tier (`cheap` | `standard` | `pro`) using a
-   pure-heuristic regex + token-length scan. No LLM call — no extra cost.
+## 🧠 How it picks
 
-   * Pro signals: `reason`, `analyze`, `debug`, `multi-step`, `refactor`,
-     `architect`, `optimize`, `investigate`, ...
-   * Cheap signals: `translate`, `summarize`, `rephrase`, `extract`, `list`,
-     `title`, `convert`, `format`, `yes or no`, ...
-   * Long prompts (> ~4 kB) are bumped from cheap → standard.
+1. 🎚️ **Classify** the prompt into a tier (`cheap` | `standard` | `pro`)
+   using a pure-heuristic regex + token-length scan. No LLM call —
+   no extra cost.
+
+   * **Pro signals:** `reason`, `analyze`, `debug`, `multi-step`, `refactor`,
+     `architect`, `optimize`, `investigate`, …
+   * **Cheap signals:** `translate`, `summarize`, `rephrase`, `extract`, `list`,
+     `title`, `convert`, `format`, `yes or no`, …
+   * **Long prompts** (> ~4 kB) bump cheap → standard (larger context).
 
    Override with `--tier`.
 
-2. **Filter** candidates to the pool you asked for (`free` or `paid` or `any`),
-   then to models that meet the classified tier (with optional tier-upgrade).
-   Vision prompts: only vision-capable models survive this step.
+1. 🧹 **Filter** candidates to the pool you asked for (`free` / `paid` /
+   `any`), then to models that meet the classified tier (with optional
+   tier-upgrade). Vision prompts: only vision-capable models survive.
 
-3. **Rank** the survivors by `est_cost = in_tokens × input_price + out_tokens ×
-   output_price`. $0 models always win. Ties broken by capability tier.
+1. 💱 **Rank** the survivors by `est_cost = in_tokens × input_price +
+   out_tokens × output_price`. `$0` models always win. Ties broken by
+   capability tier.
 
-4. **Call** the cheapest. On failure, **retry inside the same provider by
+1. ⚡ **Call** the cheapest. On failure, **retry inside the same provider by
    rotating keys** (if the provider has multiple), with exponential backoff.
 
-   **Fail-fast on permanent errors**: HTTP 400/401/403/404/422/etc. mean "this
-   request itself is wrong" — don't retry, don't rotate keys, don't try
-   other variants of this same request. Skip immediately to the next
-   candidate. Cuts wasted time on auth/permissions/model-not-found from
-   O(keys × retries) per failed provider to **1 attempt**.
+   **Fail-fast on permanent errors**: HTTP 400/401/403/404/422/… mean
+   "this request itself is wrong" — don't retry, don't rotate keys, don't
+   try other variants. Skip immediately to the next candidate. Cuts wasted
+   time on auth/permissions/model-not-found from O(keys × retries) to **1
+   attempt**.
 
-5. **Fall back** in this order:
+1. 🔁 **Fall back** in this order:
    1. Next-cheapest candidate in the price-ranked plan.
-   2. The configured curated chain (defaults to a small set of good-fast-cheap
-      alternatives; configurable in `config.yaml` as
+   1. The configured **curated chain** (defaults to a small set of
+      good-fast-cheap alternatives; configurable in `config.yaml` as
       `policy.zai_fallback_chain`).
-   3. Any other model that wasn't in the plan, regardless of tier, still
+   1. Any other model that wasn't in the plan, regardless of tier, still
       respecting `cost_class` and `vision`.
 
-   **Circuit breaker**: in any single route() invocation, a (provider, model)
-   that accumulates 3+ retryable failures (429/5xx/timeout) gets temporarily
-   skipped for the rest of the run. The router doesn't waste budget hammering
-   a known-broken provider while looking for a working one elsewhere.
+   **🛡️ Circuit breaker**: in any single `route()` invocation, a
+   `(provider, model)` that accumulates **3+ retryable failures**
+   (429/5xx/timeout) gets temporarily skipped for the rest of the run. The
+   router doesn't waste budget hammering a known-broken provider while
+   looking for a working one elsewhere.
 
-6. **Return** either the answer, or a complete trace of every attempt + error.
-   Each attempt entry records whether it was `permanent` (skipped all keys),
-   `retryable` (transient, retried with backoff), or `ok` (succeeded).
+1. 📋 **Return** either the answer, or a complete trace of every attempt +
+   error. Each attempt entry records whether it was `permanent` (skipped
+   all keys), `retryable` (transient, retried with backoff), or `ok`
+   (succeeded).
 
-The whole thing runs in one Python process. No daemon, no DB, no proxy.
+The whole thing runs in one Python process. **No daemon, no DB, no proxy.**
 
-## Programmatic use
+---
+
+## 🐍 Programmatic use
 
 ```python
 from smart_router.route import route
 
 result = route("Translate hello to French", cost_class="free")
 print(result["selected_provider"], result["response"])
-print("cost:", result.get("est_cost_usd"))
-print("tried:", result.get("fallbacks_tried"))
+print("💰 cost:", result.get("est_cost_usd"))
+print("🔁 tried:", result.get("fallbacks_tried"))
 ```
 
 ```python
-# With images
+# With images 👁
 result = route("What's in this?", images=["data:image/png;base64,iVBOR..."])
-# Or with a specific tier
+
+# With a specific tier 🎯
 result = route("Reason about X", force_tier="pro", cost_class="paid", max_out=1024)
 ```
 
-All costs are estimated; real billed amounts may differ slightly because the
+All costs are **estimated**; real billed amounts may differ slightly because the
 router estimates input tokens at ~4 chars/token.
 
-## Configuration
+---
+
+## ⚙️ Configuration
 
 Edit `config.yaml` to add/remove providers or change prices:
 
 ```yaml
 providers:
   my_provider:
-    env_key: MY_API_KEY          # env var holding the key(s)
+    env_key: MY_API_KEY          # 🔑 env var holding the key(s)
     base_url: https://api.my.com/v1
-    cost_class: paid             # or "free"
+    cost_class: paid             # 🟡 or "free"
     models:
       - name: my-fast
         tier: cheap
-        input_price: 0.10        # USD per 1M tokens
+        input_price: 0.10        # 💵 USD per 1M tokens
         output_price: 0.50
         context: 32768
-        vision: false            # set true if model accepts images
+        vision: false            # 👁 set true if model accepts images
       - name: my-pro
         tier: pro
         input_price: 1.00
@@ -329,96 +351,126 @@ providers:
 model (overrides). Two providers can share `env_key`; `hr auth` will see one
 combined entry.
 
-### Free vs paid — the one knob
+### 🟢 Free vs paid — the one knob
 
 `cost_class: free` and `cost_class: paid` are *user-facing concepts*. You can
 always pick one with `--class`. The router never silently routes between them —
 there's no `promote free to paid if free fails` rule.
 
-The `free` pool is for things like:
-* Subscription plans (z.ai Coding Plan, Kilo Code, MiniMax prepaid, ...)
-* Public free tiers (Gemini free, GitHub Models free, OpenRouter `:free` models)
-* Local inference (base_url + no API key needed)
+| Pool | Examples |
+|---|---|
+| 🟢 **free** | Subscription plans (z.ai Coding Plan, Kilo Code, MiniMax prepaid, …), public free tiers (Gemini free, GitHub Models free, OpenRouter `:free` models), local inference (base_url + no API key needed) |
+| 🟡 **paid** | Everything with a real USD bill |
 
-The `paid` pool is for everything with a real USD bill.
+If you want "**always free first, paid only when free failed**":
 
-If you want "always free first, paid only when free fails", use:
 ```bash
-hr route --prompt "..." --class free   # try this first
-hr route --prompt "..." --class paid   # retry with this if free failed
+hr route --prompt "..." --class free   # 🟢 try this first
+hr route --prompt "..." --class paid   # 🟡 retry with this if free failed
 ```
+
 The router itself doesn't bridge the two because the use case is genuinely
 different (zero-extra-cost vs billable-by-API).
 
-## Testing
+---
+
+## 🧪 Testing
 
 A full test suite (no external dependencies beyond `pyyaml`):
 
 ```bash
 source .venv/bin/activate
-python -m tests.smoke
+python -m tests.smoke     # 🧪 21 unit + CLI tests, no network required
 ```
 
 This exercises:
-* Heuristic classifier (cheap / standard / pro / long-prompt bump)
-* Budget save/load/record/cap
-* Multi-key provider env collection + dedupe
-* Cost-class filter
-* Vision routing
-* Curated fallback chain
-* Per-key rotation
-* Every CLI sub-command (`route`, `models`, `verify`, `auth`, `doctor`,
-  `budget`, `chat`) including `--pretty`, `--dry-run`, `--class free|paid|any`,
-  and key-masking in `hr auth`.
 
-Live integration test against a fake OpenAI-compatible server:
+- 🧠 Heuristic classifier (cheap / standard / pro / long-prompt bump)
+- 💰 Budget save/load/record/cap
+- 🔑 Multi-key env collection + dedupe
+- 🟢🟡 Cost-class filter (free / paid)
+- 👁 Vision routing forces vision-flagged models only
+- 🔁 Curated fallback chain (simulated provider failure)
+- 🔂 Per-key rotation
+- ⚡ Permanent vs retryable HTTP errors (`_classify_http`)
+- 🚫 Fail-fast: one attempt on a 404, not N keys
+- 🛡️ Circuit breaker limiting retryable failures
+- 🪶 All CLI sub-commands (`route`, `models`, `verify`, `auth`, `doctor`,
+  `budget`, `chat`) including `--pretty`, `--dry-run`,
+  `--class free|paid|any`, and key-masking in `hr auth`.
+
+### 🧬 Live integration test against a fake server
 
 ```bash
 # Terminal 1: a tiny test server that always returns 200
-python -m tests._dummy_server
+python -m tests.fake_server
 
 # Terminal 2: drive it with a side-loaded config that points at the dummy URL,
-# then run hr route — see `https://github.com/.../tests/_dummy_server.py`.
+# then run hr route — see `https://github.com/.../tests/fake_server.py`.
 ```
 
-## Known quirks
+The server accepts any `POST /chat/completions` and always returns a valid 200
++ non-empty body. To test error handling, swap its base path to `/empty` (for
+the empty-response gotcha) or `/fail/N` (for the first N requests returning
+500 then succeeding — exercises the retry + fallback chain).
 
-* **Reasoning models** (z.ai GLM-5.x, MiniMax M-series, deepseek-reasoner) burn
-  output tokens on internal `ˆÕÈ` blocks before the visible answer appears.
-  Use `--max-tokens 300+` for cheap tasks and `≥ 800` for pro tasks so the
-  model has budget left over for the actual response. `route()` already
-  triggers fallback on an empty response.
+---
 
-* **`hr verify`** fires one HTTP request per model — useful for a one-shot
+## ⚠️ Known quirks
+
+- **Reasoning models** (z.ai GLM-5.x, MiniMax M-series, deepseek-reasoner)
+  burn output tokens on internal `ˆÕÈ` blocks before the visible answer
+  appears. Use `--max-tokens 300+` for cheap tasks and `≥ 800` for pro tasks
+  so the model has budget left over for the actual response. `route()`
+  already triggers fallback on an empty response.
+
+- **`hr verify`** fires one HTTP request per model — useful for a one-shot
   health check, expensive at scale. Don't add it to cron without thinking.
 
-* **The curated fallback chain** (`zai_fallback_chain`) is currently keyed to
-  z.ai overloading — if you remove z.ai the chain still works but you might
-  prefer to rename the field to `primary_fallback_chain` to reflect reality.
+- **The curated fallback chain** (`zai_fallback_chain`) is currently keyed
+  to z.ai overloading — if you remove z.ai the chain still works but you
+  might prefer to rename the field to `primary_fallback_chain` to reflect
+  reality.
 
-## Background
+---
 
-This project grew out of two earlier routers. One (Shaf2665/Hermes-router) is a
-full Flask proxy with key rotation, dashboard, response caching, SQLite, and a
-Codex OAuth importer — a different shape: a server. We borrowed:
-* the multi-key env convention (`KEY`, `KEYS`, `KEY_2`)
-* the priority order for handling provider overload (price rank → curated
-  chain → broader sweep)
+## 📜 Background
 
-…and explicitly **didn't borrow**:
-* the server, the dashboard, the database, the SSE streaming
-* the model-ratings dictionary (we keep tiers simpler)
-* the auth-key dashboard
+This project grew out of two earlier routers. One (`Shaf2665/Hermes-router`) is
+a full **Flask proxy** with key rotation, dashboard, response caching,
+SQLite, and a Codex OAuth importer — a different shape: a server. We borrowed:
 
-The other parent was a personal smart-llm-router that picked cheapest-capable
+- 🔑 the **multi-key env convention** (`KEY`, `KEYS`, `KEY_2`)
+- ⚡ the **priority order** for handling provider overload
+  (price rank → curated chain → broader sweep)
+
+…and explicitly **didn't borrow** 🚫:
+
+- 🐢 the server, the dashboard, the database, the SSE streaming
+- 📚 the model-ratings dictionary (we keep tiers simpler)
+- 🔐 the auth-key dashboard
+
+The other parent was a personal `smart-llm-router` that picked cheapest-capable
 from a flat pool of OpenAI-compatible providers. We extended that with:
-* explicit `--class free|paid` (it had no notion of pool)
-* per-provider key rotation
-* multi-tier fallback trace (`fallbacks_tried`)
-* 7 sub-commands instead of one giant flag set
-* vision routing with multi-image payloads
-* a real CLI with sub-commands and a REPL
 
-## License
+- 🟢🟡 explicit `--class free|paid` (it had no notion of pool)
+- 🔂 per-provider key rotation
+- 🔁 multi-tier fallback trace (`fallbacks_tried`)
+- 🧰 7 sub-commands instead of one giant flag set
+- 👁 vision routing with multi-image payloads
+- 💻 a real CLI with sub-commands and a REPL
 
-MIT — see the LICENSE file.
+---
+
+## 📄 License
+
+MIT — see the [LICENSE](LICENSE) file.
+
+---
+
+<div align="center">
+
+<sub>Built with 🪶 by JP's Hermes Agent on a Raspberry Pi 5.
+All routes tested, no daemon required. 🧪✓</sub>
+
+</div>
