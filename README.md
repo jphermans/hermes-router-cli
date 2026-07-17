@@ -148,9 +148,10 @@ inside a session). Now you can use it from chat — see the plugin section below
 
 ### Watch the install in action
 
-A 25-second terminal recording showing the full install + 7 key features:
+A 48-second terminal recording showing the full install + 7 key features,
+paced so each step is easy to follow:
 
-<a href="https://asciinema.org/a/92RwWKTcRTI6lfhT" target="_blank"><img src="https://asciinema.org/a/92RwWKTcRTI6lfhT.svg" alt="asciicast" width="640"/></a>
+<a href="https://asciinema.org/a/ATsjFLuxbM03PHLU" target="_blank"><img src="https://asciinema.org/a/ATsjFLuxbM03PHLU.svg" alt="asciicast" width="640"/></a>
 
 The `.cast` file is in [`docs/install-demo.cast`](docs/install-demo.cast) — play it locally with:
 
@@ -158,9 +159,10 @@ The `.cast` file is in [`docs/install-demo.cast`](docs/install-demo.cast) — pl
 asciinema play docs/install-demo.cast
 ```
 
-The recording shows: install → `hr doctor` → `hr doctor --verbose` →
-`hr route --class free` → `hr route --auto-fallback` → `hr budget --last 3`
-→ `hermes plugins enable --allow-tool-override` → chat usage.
+The recording shows: install → `hr --version` → `hr doctor` →
+`hr doctor --verbose` → `hr route --class free` → `hr route --auto-fallback`
+→ `hr budget --last 3` → `hermes plugins enable --allow-tool-override`
+→ chat usage example.
 
 
 ---
