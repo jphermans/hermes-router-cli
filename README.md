@@ -166,18 +166,49 @@ appear in Hermes' tool list (`hermes tools list`).
 | `hr_models(cost_class, tier)` | Lists available models across all providers | "Which free models do I have?" |
 | `hr_doctor()` | Health check — providers, keys, config | "Is everything working?" |
 
+### Important: Tools ≠ Slash Commands
+
+The plugin adds **tools** (`hr_route`, `hr_models`, `hr_doctor`) that the
+**Hermes AI agent** can call when you ask it to. These are **not** slash
+commands — you don't type `/hr doctor` in the chat. Instead, you just say
+what you want in natural language:
+
+| You say... | What happens |
+|---|---|
+| "Run hr_doctor" | Hermes calls `hr_doctor()` and shows the health report |
+| "Route this through the free pool: vertaal hallo naar Frans" | Hermes calls `hr_route()` and returns the answer |
+| "Which free models do I have?" | Hermes calls `hr_models()` and shows the list |
+| `/hr doctor` | ❌ Unknown command — Hermes has no `/hr` slash command |
+
+> **In short:** tell the agent what you want, don't type a slash command.
+> The agent decides when to use the plugin tools.
+
 ### Using the tools in a Hermes session
 
-Once the plugin is enabled and you've started a new session, just tell Hermes:
+Once the plugin is enabled and you've started a new session (`/reset`), just
+tell Hermes in plain language:
 
 > "Use the free pool to translate this: Hello → French"
 
 Hermes will see `hr_route` is available and call it as needed. You can also
-ask explicitly:
+be explicit:
 
 > "Run `hr_doctor` to check my providers"
 > "Show me `hr_models` with only free providers"
 > "Route this through the paid pool: Write a React component"
+
+### Where things live
+
+| What | Installed at | How to use it |
+|---|---|---|
+| **CLI** (`hr`) | `~/.local/bin/hr` (symlink) | Type `hr route`, `hr doctor`, `hr models` in your terminal |
+| **Project** | `/home/jphermans/documents/hermes-router/` | Contains `.venv/`, `config.yaml`, source code |
+| **Plugin** (Hermes Agent) | `~/.hermes/plugins/hermes-router/` | Enabled with `hermes plugins enable hermes-router` |
+| **Plugin tools** | Loaded by Hermes at session start | Say "hr_doctor" to the agent — no `/hr` commands |
+
+The CLI (`hr` in your terminal) and the plugin tools (`hr_route` etc. inside
+Hermes) use the **same engine** — same config, same keys, same venv. The
+difference is just how you reach it.
 
 ### What the plugin shares with Hermes
 
