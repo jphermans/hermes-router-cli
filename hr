@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""
-Convenience launcher so `hr` works as a binary in PATH.
+"""Convenience launcher so `hr` works as a binary in PATH.
 
 Resolves to the project's own .venv/bin/python3 when it exists, falling
 back to the current `sys.executable` otherwise. This means the launcher
 "just works" whether the user invokes it through PATH (`hr --version`) or
-from the project root (`./hr --version`). Crucially, it does NOT mutate
-the venv — that's install.py's job.
+from the project root (`./hr --version`).
 """
 
 from __future__ import annotations
@@ -16,19 +14,23 @@ import subprocess
 import sys
 from pathlib import Path
 
-# __file__ may be a symlink (`/home/<user>/.local/bin/hr -> <project>/hr`).
+# __file__ may be a symlink (`~/.local/bin/hr -> <project>/hr`).
 # resolve() follows symlinks to land on the actual hr file inside the project.
 PROJECT_ROOT = Path(__file__).resolve().parent
 VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python3"
 VENV_PYTHON_WIN = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
 REQUIREMENTS = PROJECT_ROOT / "requirements.txt"
-INSTALL_PY = PROJECT_ROOT / "install.py"
 
-# Forward every arg we got; re-exec under the venv python if it exists AND
-# we're not already running inside it (avoid infinite re-exec).
+
 def _is_running_inside(target: Path) -> bool:
+    """True if sys.executable's literal path starts with the .venv/ directory."""
     try:
-        return Path(os.path.realpath(sys.executable)).resolve() == target.resolve()
+        # Don't resolve symlinks — system python and venv python may share
+        # the same underlying binary but have different literal paths.
+        # Check if sys.executable (unresolved) is under .venv/bin/.
+        venv_bin = target.parent  # e.g. /path/to/.venv/bin/
+        exec_path = Path(sys.executable)
+        return str(exec_path).startswith(str(venv_bin))
     except Exception:
         return False
 
@@ -38,10 +40,6 @@ def _self_heal() -> bool:
 
     Returns True if the venv is now usable, False on failure.
     """
-    from email.message import Message
-    import io
-    import urllib.request
-
     print("📦 Setting up hermes-router environment...", file=sys.stderr)
     sys.stderr.flush()
 
@@ -56,7 +54,7 @@ def _self_heal() -> bool:
         print(f"  ✗ Failed to create .venv: {e}", file=sys.stderr)
         return False
 
-    pip_path = str(VENV_PYTHON if not os.name == "nt" else VENV_PYTHON_WIN)
+    pip_path = str(VENV_PYTHON if os.name != "nt" else VENV_PYTHON_WIN)
 
     # 2. Try local requirements.txt first.
     if REQUIREMENTS.exists():
@@ -85,45 +83,25 @@ def _self_heal() -> bool:
         return False
 
 
-def main():
-    # Find which python to use.
+if __name__ == "__main__":
     target = VENV_PYTHON if os.name != "nt" else VENV_PYTHON_WIN
 
+    # If venv exists and we're NOT running inside it, re-exec under it.
     if target.exists() and not _is_running_inside(target):
-        # Re-exec under the project venv.
-        os.execv(str(target), [str(target), str(INSTALL_PY if "install" in sys.argv else PROJECT_ROOT / "hr")] + sys.argv[1:])
+        os.execv(str(target), [str(target), str(PROJECT_ROOT / "hr")] + sys.argv[1:])
 
-    # No venv or already inside it — check for yaml.
-    try:
-        import yaml  # noqa: F401
-        yaml_ok = True
-    except ImportError:
-        yaml_ok = False
-
-    if not yaml_ok and VENV_PYTHON.parent.exists():
-        # Venv exists but yaml not installed. Try one self-heal.
-        if not _self_heal():
-            print("  ✗ PyYAML missing. Run `python3 install.py` to fix manually.", file=sys.stderr)
-            sys.exit(2)
-        # Now re-exec under the now-installed venv.
-        if target.exists() and not _is_running_inside(target):
-            os.execv(str(target), [str(target), __file__] + sys.argv[1:])
-
-    # No venv at all — try to create one + install.
+    # We're either inside the venv, or there's no venv at all.
+    # If no venv, try to create one + install deps.
     if not VENV_PYTHON.parent.exists():
         if not _self_heal():
             print("  ✗ Could not set up the environment.", file=sys.stderr)
             print("    Run `python3 install.py` manually to diagnose.", file=sys.stderr)
             sys.exit(2)
-        # Now re-exec under the newly-created venv.
+        # Re-exec under the newly-created venv.
         if target.exists() and not _is_running_inside(target):
-            os.execv(str(target), [str(target), __file__] + sys.argv[1:])
+            os.execv(str(target), [str(target), str(PROJECT_ROOT / "hr")] + sys.argv[1:])
 
-    # If we got here, we're already inside the venv or self-heal failed.
-    # Fall through to the CLI.
+    # If we got here, we're inside the venv (or self-heal failed).
+    # Delegate to the CLI.
     from smart_router.__main__ import main as cli_main
     sys.exit(cli_main())
-
-
-if __name__ == "__main__":
-    main()
