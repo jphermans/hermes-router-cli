@@ -148,9 +148,9 @@ inside a session). Now you can use it from chat — see the plugin section below
 
 ### Watch the install in action
 
-A 15-second terminal recording of the full install + test flow:
+A 25-second terminal recording showing the full install + 7 key features:
 
-<a href="https://asciinema.org/a/YnIXcMZNBF8IGAcC" target="_blank"><img src="https://asciinema.org/a/YnIXcMZNBF8IGAcC.svg" alt="asciicast" width="640"/></a>
+<a href="https://asciinema.org/a/92RwWKTcRTI6lfhT" target="_blank"><img src="https://asciinema.org/a/92RwWKTcRTI6lfhT.svg" alt="asciicast" width="640"/></a>
 
 The `.cast` file is in [`docs/install-demo.cast`](docs/install-demo.cast) — play it locally with:
 
@@ -158,14 +158,9 @@ The `.cast` file is in [`docs/install-demo.cast`](docs/install-demo.cast) — pl
 asciinema play docs/install-demo.cast
 ```
 
-> Note: the asciinema.org version above was uploaded from an unauthenticated
-> CLI, so it will be auto-deleted after 7 days unless the uploader links their
-> account. To make it permanent, visit
-> [asciinema.org/connect](https://asciinema.org/connect) and re-link the
-> recording, or re-upload after authenticating with `asciinema auth`.
->
-> Alternatively, anyone with the recording can re-upload it themselves —
-> the raw `.cast` file is committed to this repo, so it's never truly lost.
+The recording shows: install → `hr doctor` → `hr doctor --verbose` →
+`hr route --class free` → `hr route --auto-fallback` → `hr budget --last 3`
+→ `hermes plugins enable --allow-tool-override` → chat usage.
 
 
 ---
