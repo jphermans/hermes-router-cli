@@ -76,9 +76,18 @@ def main(argv):
                          "Skip for the latest commit, or pin to a specific commit.")
     ap.add_argument("--dry-run", action="store_true",
                     help="download + verify only; don't actually run install.py")
-    ap.add_argument("--forward-args", action="append", default=[],
-                    help="extra args forwarded to install.py (repeatable)")
-    args = ap.parse_args(argv)
+    # Everything after `--` is forwarded as a single shell-style argv list
+    # to install.py. argparse's `nargs='+'` is too clunky for this.
+    # Split argv at '--': everything before is for us, everything after
+    # goes straight to install.py.
+    if "--" in argv:
+        sep = argv.index("--")
+        our_args = argv[:sep]
+        forward = argv[sep + 1:]
+    else:
+        our_args = argv
+        forward = []
+    args = ap.parse_args(our_args)
 
     url = ARCHIVE_URL.format(ref=args.ref, repo=args.repo)
     _print_status("info", f"📡 Fetching {url}")
@@ -159,7 +168,7 @@ def main(argv):
             return 0
 
         # Run install.py live, forwarding stdout/stderr.
-        cmd = [sys.executable, install_py, *args.forward_args]
+        cmd = [sys.executable, install_py, *forward]
         _print_status("info", f"🚀 Running: {' '.join(cmd)}")
         result = subprocess.run(cmd)
         return result.returncode
