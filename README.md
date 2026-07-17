@@ -88,10 +88,31 @@ into anything on your `$PATH`:
 ln -s "$(pwd)/hr" ~/.local/bin/hr
 ```
 
-### Configure your API keys
+### Where keys come from
 
-Tokens are read from environment variables, never stored in the repo. Pick the
-form that fits you — all three work and merge automatically:
+The router reads API keys in three places, in order:
+
+| Source | What lives there | Who writes it |
+|---|---|---|
+| **process env** (`GLM_API_KEY=...`) | whatever you `export` in your shell, CI, `systemd --setenv`, etc. | you, manually |
+| **`~/.hermes/.env`** | all Hermes' keys in dotenv form | `hermes auth add`, your hand |
+| **`~/.hermes/auth.json`** | Hermes' structured credential pool | `hermes auth add`, Hermes itself |
+
+If `hermes` already has keys configured, `hr route` picks them up automatically —
+you do not need to re-export anything. Just run `hr route --prompt "..."` and it
+will discover whichever providers have keys present.
+
+You can override the file paths for testing or container setups:
+
+```bash
+export HERMES_ENV_FILE=/etc/hermes/keys.env       # default: ~/.hermes/.env
+export HERMES_AUTH_FILE=/etc/hermes/auth.json     # default: ~/.hermes/auth.json
+```
+
+### Configure your API keys manually
+
+If you don't use `hermes auth add`, you can set them yourself. Pick whichever
+form fits you — all three work and merge automatically:
 
 ```bash
 # single key — singular form
@@ -103,7 +124,7 @@ export OPENROUTER_API_KEYS=sk-1,sk-2,sk-3
 # also numbered: OPENROUTER_API_KEY_2, _3, ...
 ```
 
-If you already keep these in `~/.hermes/.env`, `hr auth` will scan it for you:
+If you keep keys in `~/.hermes/.env`, `hr auth` will scan it for you:
 
 ```bash
 hr auth                # show which keys are present (values masked)

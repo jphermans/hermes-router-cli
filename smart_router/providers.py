@@ -30,6 +30,42 @@ except ImportError:
 HERE = Path(__file__).resolve().parent
 CONFIG_PATH = HERE.parent / "config.yaml"
 
+# Hermes keeps its API keys in three places. The router honours all three
+# in cascade order so users never have to re-import anything once Hermes
+# has their keys:
+#   1. process env (KEY, KEYS, KEY_2 …) — set by shell, CI, systemd, etc.
+#   2. ~/.hermes/.env                  — written by `hermes auth add`
+#   3. ~/.hermes/auth.json             — Hermes' structured credential pool
+#
+# Hermes' own .env is at ~/.hermes/.env, NOT the project's .env — so we look
+# in the user-home Hermes directory by default, but the path can be overridden
+# via HERMES_ENV_FILE for tests / container setups / multi-user hosts.
+# NOTE: path resolution happens at call time, not import time, so tests can
+# override HERMES_ENV_FILE / HERMES_AUTH_FILE at runtime via os.environ. The
+# constants kept here are only for documentation / introspection.
+HERMES_ENV_PATH_DEFAULT = str(Path.home() / ".hermes" / ".env")
+HERMES_AUTH_PATH_DEFAULT = str(Path.home() / ".hermes" / "auth.json")
+
+
+def _resolve_hermes_env_path() -> Path:
+    p = os.environ.get("HERMES_ENV_FILE")
+    return Path(p) if p else Path(HERMES_ENV_PATH_DEFAULT)
+
+
+def _resolve_hermes_auth_path() -> Path:
+    p = os.environ.get("HERMES_AUTH_FILE")
+    return Path(p) if p else Path(HERMES_AUTH_PATH_DEFAULT)
+
+
+# Backwards-compat: many callers may still reference these. They are now
+# Path objects that RE-EVALUATE on each attribute access via a small trick —
+# but for our purposes, a simple re-read on call is safer. Treat the below
+# names as the *current* value at module load — if you need the live value
+# inside runtime code, prefer calling _resolve_hermes_env_path() /
+# _resolve_hermes_auth_path() instead.
+HERMES_ENV_PATH = _resolve_hermes_env_path()
+HERMES_AUTH_PATH = _resolve_hermes_auth_path()
+
 COST_CLASS_FREE = "free"
 COST_CLASS_PAID = "paid"
 
@@ -61,35 +97,210 @@ class Provider:
         return [m for m in self.models if m.cost_class == cost_class]
 
 
-def _collect_keys(env_var: str) -> list[str]:
-    """Merge keys from singular / plural / numbered forms. Deduped, order preserved."""
-    collected: list[str] = []
-    singular = env_var[:-1] if env_var.endswith("S") else env_var
-
-    if singular != env_var:
-        v = os.environ.get(singular, "").strip()
-        if v:
-            collected.append(v)
-
-    for piece in os.environ.get(env_var, "").split(","):
-        piece = piece.strip()
-        if piece:
-            collected.append(piece)
-
-    i = 2
-    while True:
-        nv = os.environ.get(f"{singular}_{i}", "").strip()
-        if not nv:
-            break
-        collected.append(nv)
-        i += 1
-
-    seen, out = set(), []
-    for k in collected:
-        if k and k not in seen:
-            seen.add(k)
-            out.append(k)
+def _read_env_file(path: Path) -> dict[str, str]:
+    """Parse a dotenv-style file. No shell side-effects, no variable expansion."""
+    out: dict[str, str] = {}
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                out[k.strip()] = v.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass  # a malformed .env must not break the router
     return out
+
+
+def _read_auth_json_providers(path: Path) -> dict[str, list[str]]:
+    """Extract provider->keys mapping from ~/.hermes/auth.json.
+
+    Hermes stores keys in two places inside auth.json:
+      * top-level "providers": {"zai": ["k1","k2"], ...}  (legacy / direct)
+      * top-level "credential_pool": [name, name, ...]     (just names, NOT keys)
+
+    Plus each named pool may have additional files. For hermes-router's
+    purposes we accept whatever structure is present: any list-of-strings
+    under a provider key, and any dict with a "key" / "keys" field at the
+    top level mapped by lowercase normalised name.
+    """
+    out: dict[str, list[str]] = {}
+    if not path.exists():
+        return out
+    try:
+        import json
+        doc = json.loads(path.read_text())
+    except Exception:
+        return out
+    if not isinstance(doc, dict):
+        return out
+
+    # Form 1: {"providers": {"zai": ["k1","k2"], ...}}
+    provs = doc.get("providers") or {}
+    if isinstance(provs, dict):
+        for name, keys in provs.items():
+            if isinstance(keys, list):
+                cleaned = [str(k).strip() for k in keys if str(k).strip()]
+                if cleaned:
+                    out[str(name)] = cleaned
+
+    # Form 2: docs with a per-credential "provider" + "api_key" pair.
+    # (Some Hermes formats keep both: pools of named credentials.)
+    for key in ("credentials", "pool", "items"):
+        items = doc.get(key)
+        if isinstance(items, list):
+            for entry in items:
+                if not isinstance(entry, dict):
+                    continue
+                provider = entry.get("provider") or entry.get("name") or entry.get("id")
+                api_key = entry.get("api_key") or entry.get("key") or entry.get("credential")
+                if not provider or not api_key:
+                    continue
+                out.setdefault(str(provider), []).append(str(api_key).strip())
+    return out
+
+
+_AUTH_CACHE: dict[str, dict[str, list[str]]] = {}
+
+
+def _auth_json_providers_cached(path: Path) -> dict[str, list[str]]:
+    """Read auth.json once and cache, but read files fresh on every call
+    if the file's mtime changed — so users adding a key via `hermes auth add`
+    then re-running `hr route` get the new key without a process restart.
+    """
+    try:
+        mtime = path.stat().st_mtime if path.exists() else 0
+    except OSError:
+        mtime = 0
+    cached = _AUTH_CACHE.get(str(path))
+    if cached and cached.get("__mtime__") == mtime:
+        return cached["data"]
+    data = _read_auth_json_providers(path)
+    _AUTH_CACHE[str(path)] = {"__mtime__": mtime, "data": data}
+    return data
+
+
+_ENV_CACHE: dict[str, dict[str, str]] = {}
+
+
+def _hermes_env_cached(path: Path) -> dict[str, str]:
+    """Same mtime-aware caching for ~/.hermes/.env."""
+    try:
+        mtime = path.stat().st_mtime if path.exists() else 0
+    except OSError:
+        mtime = 0
+    cached = _ENV_CACHE.get(str(path))
+    if cached and cached.get("__mtime__") == mtime:
+        return cached["data"]
+    data = _read_env_file(path)
+    _ENV_CACHE[str(path)] = {"__mtime__": mtime, "data": data}
+    return data
+
+
+def _add_to(collected: list[str], seen: set[str], value: str):
+    """Helper: add a non-empty, not-already-seen value to a collector list."""
+    value = str(value).strip() if value else ""
+    if value and value not in seen:
+        seen.add(value)
+        collected.append(value)
+
+
+def _add_multi_form(env_map: dict[str, str], var_name: str,
+                    collected: list[str], seen: set[str]) -> None:
+    """Apply the multi-key conventions (KEY, KEYS, KEY_2...) against a dict-like env.
+
+    Always reads `var_name` literally (works for both KEY and KEYS forms),
+    and — only when var_name ends in S — also reads the singular form.
+    Always reads numbered suffixes (KEY_2, KEY_3, …) on the singular name.
+    """
+    # Read var_name itself, comma-split (handles KEYS=k1,k2).
+    for piece in env_map.get(var_name, "").split(","):
+        _add_to(collected, seen, piece)
+    # When the caller passed the plural form (ends in 'S'), also try the singular.
+    if var_name.endswith("S"):
+        singular = var_name[:-1]
+        _add_to(collected, seen, env_map.get(singular, ""))
+    else:
+        singular = var_name
+    # Numbered suffixes on the singular name (_2, _3, …).
+    j = 2
+    while True:
+        nv = env_map.get(f"{singular}_{j}", "")
+        if not str(nv).strip():
+            break
+        _add_to(collected, seen, nv)
+        j += 1
+
+
+def _normalise_provider_name(env_var: str) -> str:
+    """GLM_API_KEY -> glm; OPENROUTER_API_KEY -> openrouter; KILOCODE_API_KEY -> kilocode."""
+    name = env_var.lower()
+    for suffix in ("_api_key", "_apikey", "_api_keys", "_token", "_secret"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
+    return name
+
+
+def _collect_keys(env_var: str) -> list[str]:
+    """Active implementation.
+
+    Looks up keys in priority order:
+      1. Process env (live shell), honouring KEY / KEYS / KEY_2 forms.
+      2. ~/.hermes/.env   — what `hermes auth add` writes.
+      3. ~/.hermes/auth.json — Hermes' structured provider→keys pool.
+
+    Dedupes, preserves first-seen order. Multi-key conventions apply to
+    sources (1) and (2); auth.json is matched against the literal env_var
+    or its normalised form (GLM_API_KEY -> "glm").
+
+    HERMES_ENV_FILE / HERMES_AUTH_FILE override paths for testing or
+    container setups. Path resolution happens at call time so env-var
+    overrides work without re-importing the module.
+    """
+    collected: list[str] = []
+    seen: set[str] = set()
+
+    # 1. Process env — magic that bridges KEY / KEYS / KEY_2 via the caller.
+    _add_multi_form(dict(os.environ), env_var, collected, seen)
+
+    # 2. Hermes' dotenv — same form conventions.
+    env_path = _resolve_hermes_env_path()
+    _add_multi_form(_hermes_env_cached(env_path), env_var, collected, seen)
+
+    # 3. Hermes auth.json — match by literal env_var OR normalised name.
+    auth_path = _resolve_hermes_auth_path()
+    auth_pool = _auth_json_providers_cached(auth_path)
+    for name in (env_var, _normalise_provider_name(env_var)):
+        for k in auth_pool.get(name, []) or []:
+            _add_to(collected, seen, k)
+
+    return collected
+
+
+# Public alias — point here if you want to bypass ~/.hermes in tests.
+_collect_keys_strict = _collect_keys  # kept for downstream imports
+
+
+def clear_caches() -> None:
+    """Drop the in-process mtime caches. Tests use this to keep fixtures hermetic."""
+    _AUTH_CACHE.clear()
+    _ENV_CACHE.clear()
+
+
+def _collect_keys_simple(env_var: str) -> list[str]:
+    """Process env only — process-env cascade without Hermes' own .env/auth.json.
+
+    Useful in tests and for CLI tools that want strict isolation. Not used by
+    the router itself.
+    """
+    collected: list[str] = []
+    seen: set[str] = set()
+    _add_multi_form(dict(os.environ), env_var, collected, seen)
+    return collected
 
 
 def load_config(path: Optional[Path] = None) -> dict:

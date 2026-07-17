@@ -15,7 +15,7 @@ env/
 # The router's persistent state (auto-generated)
 budget.json
 tmp/
-tests/_tmp/
+tests/_tmp*/
 *.log
 
 # Editor / OS
