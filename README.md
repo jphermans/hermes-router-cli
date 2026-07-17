@@ -146,6 +146,20 @@ inside a session). Now you can use it from chat — see the plugin section below
 | **Plugin tools** | Loaded by Hermes at session start | Say "route this through the free pool" in CLI, Telegram, or any channel |
 | **Telegram** | No extra setup — works after `/reset` | Send "Run hr_doctor" or "Route this through the free pool" |
 
+### Watch the install in action
+
+A 15-second terminal recording of the full install + test flow:
+
+<a href="https://asciinema.org/a/YOUR-CAST-ID" target="_blank"><img src="https://asciinema.org/a/YOUR-CAST-ID.svg" alt="asciicast" width="640"/></a>
+
+The `.cast` file is in [`docs/install-demo.cast`](docs/install-demo.cast) — play it locally with:
+
+```bash
+asciinema play docs/install-demo.cast
+```
+
+Or upload to [asciinema.org](https://asciinema.org) and replace the URL above to make it embeddable on GitHub.
+
 ---
 
 ## 🪶 Using hr in your terminal (CLI)

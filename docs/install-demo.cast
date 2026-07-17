@@ -1,0 +1,13 @@
+{"version": 2, "width": 80, "height": 24, "timestamp": 1784287527, "idle_time_limit": 0.7, "env": {"SHELL": "/bin/bash", "TERM": "xterm-256color"}}
+[1.00474, "o", "$ python3 -c \"$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)\"\r\n"]
+[2.005877, "o", "\r\n(... bootstrap downloads and installs ...)\r\n"]
+[3.006901, "o", "\r\n"]
+[4.007884, "o", "$ hr --version\r\n"]
+[4.126827, "o", "hermes-router 1.0.0\r\n"]
+[5.15562, "o", "\r\n$ hr doctor\r\n"]
+[5.296005, "o", "✓ config.yaml                loaded 11 providers\r\n✓ providers with keys        10/11 have at least one key configured\r\n✓ cost-class coverage        free: 5 providers, paid: 5 providers\r\n✓ free pool usable           21 free model(s) available\r\n✓ paid pool usable           16 paid model(s) available\r\n✓ all providers have base_url  all set\r\n"]
+[6.324736, "o", "\r\n$ hr route --prompt \"Say hello in Dutch\" --class free --pretty\r\n"]
+[12.381588, "o", "✓ github_models/gpt-4o-mini  (~$0.000000, 1 tries)\r\n\r\nHello in Dutch is \"Hallo.\"\r\n"]
+[13.415549, "o", "\r\n$ hermes plugins enable hermes-router\r\n"]
+[13.855704, "o", "\u001b[2mPlugin \u001b[0m\u001b[2;32m'hermes-router'\u001b[0m\u001b[2m is already enabled.\u001b[0m\r\n"]
+[13.856627, "o", "\u001b[33mAllow this plugin to replace built-in tools \u001b[0m\u001b[1;33m(\u001b[0m\u001b[33me.g. shell_exec, write_file\u001b[0m\u001b[1;33m)\u001b[0m\u001b[33m?\u001b[0m\r\n  This is a privileged capability: an override can intercept everything the \r\nagent routes through that tool.\r\n  Grant it?  "]
