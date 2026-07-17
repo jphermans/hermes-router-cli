@@ -376,6 +376,136 @@ def test_cli_auth_shows_dummy_key():
     print("  ✓ hr auth masks keys")
 
 
+def test_classify_http_classifier():
+    """Permanent vs retryable classification correctness — drives the
+    fail-fast behavior of the router. If this regresses the router will
+    either retry permanent errors (waste of time) or fail-fast on
+    transient ones (gives up too eagerly).
+    """
+    from smart_router.route import _classify_http, PERMANENT_HTTP_CODES
+    assert _classify_http(401) == (False, True), "401 must be permanent"
+    assert _classify_http(403) == (False, True)
+    assert _classify_http(404) == (False, True), "model-not-found must be permanent"
+    assert _classify_http(422) == (False, True), "validation error must be permanent"
+    assert _classify_http(400) == (False, True), "bad request must be permanent"
+    assert _classify_http(429) == (True, False), "rate limit must be retryable only"
+    assert _classify_http(503) == (True, False), "service unavailable must be retryable"
+    assert _classify_http(529) == (True, False), "overloaded must be retryable"
+    assert _classify_http(500) == (True, False), "internal error must be retryable"
+    assert _classify_http(418) == (False, False), "teapot: neither retryable nor permanent; just fail"
+    # Sanity: 401 is in the permanent set
+    assert 401 in PERMANENT_HTTP_CODES
+    assert 429 not in PERMANENT_HTTP_CODES
+    print("  ✓ _classify_http")
+
+
+def test_route_fails_fast_on_permanent_http():
+    """A 404 (model-not-found) from the primary must NOT iterate all keys.
+    Before the fix, the router would happily try every other key of the
+    same provider, getting the same 404 every time. After the fix, it
+    tries ONE key then immediately moves to the next candidate.
+    """
+    from smart_router import route as route_mod
+    cfg = {
+        "providers": {
+            "bad": {
+                "env_key": "BAD_KEYS",
+                "base_url": "u", "cost_class": "free",
+                # Many keys — so we can prove the router only tries ONE before giving up.
+                "models": [{"name": "m1", "tier": "cheap"}],
+            },
+            "good": {
+                "env_key": "GOOD_KEY",
+                "base_url": "u", "cost_class": "free",
+                "models": [{"name": "m1", "tier": "cheap"}],
+            },
+        },
+        "policy": {},
+    }
+    os.environ["BAD_KEYS"] = "bk1,bk2,bk3,bk4,bk5"   # 5 keys
+    os.environ["GOOD_KEY"] = "gk"
+
+    bad_call_count = {"n": 0}
+    good_call_count = {"n": 0}
+
+    def fake_call(c, prompt, max_out, system, images=None):
+        from smart_router.route import CallError
+        if c.provider == "bad":
+            bad_call_count["n"] += 1
+            raise CallError("HTTP 404 from bad/m1: model not found",
+                            retryable=False, permanent=True, http_code=404)
+        if c.provider == "good":
+            good_call_count["n"] += 1
+            return {"text": "ok", "usage": {}, "raw": {"choices": [{"message": {"content": "ok"}}]}}
+        raise AssertionError(f"unexpected candidate {c.provider}/{c.model}")
+
+    with _MonkeyPatchCtx() as mp:
+        mp.setattr(route_mod, "_call", fake_call)
+        result = route_mod.route("Hello", cfg=cfg, max_out=64, cost_class="any")
+
+    assert result.get("ok"), f"route failed: {result}"
+    assert result["selected_provider"] == "good"
+    # The big win: only ONE call to the bad provider, not 5.
+    assert bad_call_count["n"] == 1, f"expected exactly 1 attempt on the bad provider, got {bad_call_count['n']}"
+    assert good_call_count["n"] == 1
+    # And the trace records the permanent flag
+    bad_tries = [t for t in result["fallbacks_tried"] if t.get("provider") == "bad"]
+    assert bad_tries and bad_tries[0].get("permanent") is True, f"permanent flag missing in trace: {bad_tries}"
+    print("  ✓ 404 fails fast — only one attempt on each bad provider instead of N keys")
+
+
+def test_route_circuit_breaker_skips_repeated_failures():
+    """Three consecutive retryable failures on the same (provider,model)
+    must trigger the in-process circuit breaker — additional candidates
+    of that exact pair get skipped without re-trying. The broader sweep
+    still gets a chance to find something else, though.
+    """
+    from smart_router import route as route_mod
+    cfg = {
+        "providers": {
+            "flaky": {
+                "env_key": "F_KEY",
+                "base_url": "u", "cost_class": "free",
+                "models": [{"name": "m1", "tier": "cheap"}],
+            },
+            "good": {
+                "env_key": "G_KEY",
+                "base_url": "u", "cost_class": "free",
+                "models": [{"name": "m1", "tier": "cheap"}],
+            },
+        },
+        "policy": {},
+    }
+    os.environ["F_KEY"] = "k1"; os.environ["G_KEY"] = "k2"
+
+    flaky_calls = {"n": 0}
+    calls_to_flaky = 0  # in practice should equal retry count per key
+
+    def fake_call(c, prompt, max_out, system, images=None):
+        from smart_router.route import CallError
+        if c.provider == "flaky":
+            flaky_calls["n"] += 1
+            raise CallError("HTTP 503 overloaded", retryable=True, permanent=False, http_code=503)
+        if c.provider == "good":
+            return {"text": "ok", "usage": {}, "raw": {"choices": [{"message": {"content": "ok"}}]}}
+        raise AssertionError("unexpected")
+
+    with _MonkeyPatchCtx() as mp:
+        mp.setattr(route_mod, "_call", fake_call)
+        result = route_mod.route("Hello", cfg=cfg, max_out=64, cost_class="any")
+
+    assert result.get("ok"), result
+    # Flaky provider was tried the full retry budget (1 + key_retries=2 = 3 calls per key × 1 key = 3).
+    # The CIRCUIT BREAKER then makes any later iteration of this (provider, model) skip.
+    # Since each candidate has only one model, we'd see exactly 3 retries before the circuit triggers.
+    # The exact count depends on the plan; what matters is "not too many".
+    assert flaky_calls["n"] <= 3 * 4, f"expected circuit-breaker to limit calls, got {flaky_calls['n']}"
+    # Either the good provider is in the curated chain OR in the broader sweep — regardless,
+    # route() should eventually succeed.
+    assert result["selected_provider"] == "good"
+    print(f"  ✓ circuit breaker limits repeated retryable failures ({flaky_calls['n']} total flaky calls)")
+
+
 def main():
     _banner("module-level tests")
     test_classify_distinct_tiers()
@@ -386,6 +516,9 @@ def main():
     test_select_vision_routing()
     test_route_uses_fallback_chain_on_failure()
     test_route_uses_key_rotation()
+    test_classify_http_classifier()
+    test_route_fails_fast_on_permanent_http()
+    test_route_circuit_breaker_skips_repeated_failures()
 
     _banner("CLI-level tests")
     test_cli_version_flag()

@@ -140,12 +140,46 @@ def select(
 # ─────────────────────────────────────────────────────────────────────────────
 
 class CallError(Exception):
-    """Raised by _call() so route() can categorise transient vs fatal failures."""
+    """Raised by _call() so route() can categorise failures.
 
-    def __init__(self, message: str, *, retryable: bool, http_code: Optional[int] = None):
+    permanent=True means: do NOT retry on this key, do NOT rotate to other
+    keys of the same provider, do NOT retry this candidate. Skip immediately
+    to the next candidate in the chain. Use this for auth/permissions,
+    model-not-found, and other 'same outcome every time' failures —
+    retrying just wastes time.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = True,
+        permanent: bool = False,
+        http_code: Optional[int] = None,
+    ):
         super().__init__(message)
         self.retryable = retryable
+        self.permanent = permanent
         self.http_code = http_code
+
+
+# HTTP codes where retrying the SAME request (other key, retry, etc.) is
+# fundamentally pointless — the request itself is wrong. Move on fast.
+PERMANENT_HTTP_CODES = {400, 401, 403, 404, 405, 406, 410, 415, 422, 451}
+
+
+def _classify_http(code: int) -> tuple[bool, bool]:
+    """Return (retryable, permanent) for an HTTP status code.
+
+    permanent implies 'don't retry, don't rotate keys, don't try other
+    variants of this request'. retryable implies 'safe to try again'.
+    They are not mutually exclusive.
+    """
+    if code in PERMANENT_HTTP_CODES:
+        return (False, True)
+    if code in (408, 425, 429, 500, 502, 503, 504, 529):
+        return (True, False)
+    return (False, False)  # everything else: fail fast
 
 
 def _http_post(url: str, headers: dict, payload: dict, timeout: int = 60) -> dict:
@@ -195,10 +229,11 @@ def _call(c: Candidate, prompt: str, max_out: int, system: str,
             body_text = e.read().decode("utf-8", "replace")[:300]
         except Exception:
             pass
-        retryable = e.code in (408, 409, 425, 429, 500, 502, 503, 504, 529)
+        retryable, permanent = _classify_http(e.code)
         raise CallError(
             f"HTTP {e.code} from {c.provider}/{c.model}: {body_text}",
             retryable=retryable,
+            permanent=permanent,
             http_code=e.code,
         ) from e
     except TimeoutError as e:
@@ -229,8 +264,17 @@ def _try_candidate(
 ) -> tuple[Optional[dict], list[dict]]:
     """Try one candidate with per-key rotation + small backoff between keys.
 
-    Returns (result_dict, attempts_log). If every key fails, attempts_log has
-    one entry per key attempt.
+    Returns (result_dict, attempts_log).
+
+    Fail-fast behavior:
+      • If a 4xx-class error is PERMANENT (auth, model-not-found, etc.),
+        stop immediately — don't retry, don't rotate keys, don't try
+        other variants. The attempts_log records the one attempt; the
+        caller moves on to the next candidate.
+      • If the error is retryable (429/5xx/timeout), retry the SAME key
+        with backoff up to key_retries times. Then move to the next key.
+      • If budget cap is exceeded, skip this candidate entirely without
+        recording it as a failure.
     """
     attempts: list[dict] = []
     if not c.api_keys:
@@ -256,10 +300,16 @@ def _try_candidate(
                     "key_index": c.last_key_index,
                     "error": str(e),
                     "retryable": e.retryable,
+                    "permanent": e.permanent,
                     "http_code": e.http_code,
                 })
+                if e.permanent:
+                    # Fail-fast: don't retry, don't rotate keys, don't try
+                    # other variants of this same request. Step straight out
+                    # to the next candidate in the route plan.
+                    return None, attempts
                 if not e.retryable or kr >= key_retries:
-                    # Non-retryable, or we've exhausted key-retries on this key.
+                    # Non-retryable / exhausted retries on this key.
                     break
                 # Transient — back off briefly and retry the same key.
                 time.sleep(key_backoff_base * (1.5 ** kr))
@@ -332,8 +382,31 @@ def route(
 
     tried: list[dict] = []
 
+    # Circuit-breaker state for *this* route() invocation only.
+    # A provider that just hit >= FAIL_SKIP_THRESHOLD retryable errors in
+    # this run gets temporarily skipped for REMAINING candidates of the
+    # same provider/model (not just this one). Permanent errors are
+    # already fail-fast at the _try_candidate level.
+    FAIL_SKIP_THRESHOLD = 3
+    failed_counts: dict[tuple[str, str], int] = {}
+    skipped_circuit: list[dict] = []
+
+    def _circuit_skip(c: Candidate, reason_note: str) -> bool:
+        """Check + increment retryable failure counter; return True if
+        we should skip this candidate due to the in-process circuit breaker.
+        """
+        key = (c.provider, c.model)
+        if failed_counts.get(key, 0) >= FAIL_SKIP_THRESHOLD:
+            skipped_circuit.append({"provider": c.provider, "model": c.model,
+                                    "reason": reason_note,
+                                    "fails_so_far": failed_counts[key]})
+            return True
+        return False
+
     # First pass: try every candidate in the price-ranked plan.
     for c in plan:
+        if _circuit_skip(c, f"{FAIL_SKIP_THRESHOLD}+ retryable failures earlier in this run"):
+            continue
         if not budget_check(c.provider, c.est_cost, cap):
             tried.append({
                 "provider": c.provider, "model": c.model,
@@ -347,7 +420,16 @@ def route(
                 "provider": c.provider, "model": c.model,
                 "error": f"{type(e).__name__}: {e}",
             })
+            failed_counts[(c.provider, c.model)] = failed_counts.get((c.provider, c.model), 0) + 1
             continue
+        # Count failed attempts (anything not ok=True) for the circuit breaker.
+        for a in attempts:
+            if not a.get("ok"):
+                key = (c.provider, c.model)
+                # permanent failures don't count toward circuit (they're fail-fast).
+                if a.get("permanent"):
+                    continue
+                failed_counts[key] = failed_counts.get(key, 0) + 1
         tried.extend(attempts)
         if result is not None:
             budget_record(c.provider, c.est_cost)
@@ -389,13 +471,19 @@ def route(
     for c in curated_cands:
         if (c.provider, c.model) in tried_keys:
             continue
+        if _circuit_skip(c, f"{FAIL_SKIP_THRESHOLD}+ retryable failures earlier in this run"):
+            continue
         if not budget_check(c.provider, c.est_cost, cap):
             continue
         try:
             result, attempts = _try_candidate(c, prompt, max_out, system, images=images)
         except Exception as e:
             tried.append({"provider": c.provider, "model": c.model, "error": str(e)})
+            failed_counts[(c.provider, c.model)] = failed_counts.get((c.provider, c.model), 0) + 1
             continue
+        for a in attempts:
+            if not a.get("ok") and not a.get("permanent"):
+                failed_counts[(c.provider, c.model)] = failed_counts.get((c.provider, c.model), 0) + 1
         tried.extend(attempts)
         if result is not None:
             budget_record(c.provider, c.est_cost)
@@ -425,13 +513,19 @@ def route(
     broader.sort(key=lambda c: (c.est_cost, TIER_ORDER.get(c.tier, 1), c.provider, c.model))
 
     for c in broader:
+        if _circuit_skip(c, f"{FAIL_SKIP_THRESHOLD}+ retryable failures earlier in this run"):
+            continue
         if not budget_check(c.provider, c.est_cost, cap):
             continue
         try:
             result, attempts = _try_candidate(c, prompt, max_out, system, images=images)
         except Exception as e:
             tried.append({"provider": c.provider, "model": c.model, "error": str(e)})
+            failed_counts[(c.provider, c.model)] = failed_counts.get((c.provider, c.model), 0) + 1
             continue
+        for a in attempts:
+            if not a.get("ok") and not a.get("permanent"):
+                failed_counts[(c.provider, c.model)] = failed_counts.get((c.provider, c.model), 0) + 1
         tried.extend(attempts)
         if result is not None:
             budget_record(c.provider, c.est_cost)
@@ -452,6 +546,8 @@ def route(
         "error": "All candidates failed. See fallbacks_tried for details.",
         "fallbacks_tried": tried,
     })
+    if skipped_circuit:
+        out["circuit_skipped"] = skipped_circuit
     return out
 
 

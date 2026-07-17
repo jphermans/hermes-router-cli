@@ -87,9 +87,38 @@ def _render_pretty(r: dict) -> str:
                          f"[{p['tier']:<8}/{p['cost_class']:<4}]  ${p['est_cost_usd']:.6f}")
         return "\n".join(lines)
     if r.get("ok"):
+        chain = ""
+        if r.get("via_curated_chain"):
+            chain = " (via curated chain)"
+        elif r.get("via_broader_fallback"):
+            chain = " (via broader sweep)"
         return (
-            f"✓ {r['selected_provider']}/{r['selected_model']}  "
+            f"✓ {r['selected_provider']}/{r['selected_model']}{chain}  "
             f"(~${r['est_cost_usd']:.6f}, {len(r.get('fallbacks_tried', []))} tries)\n\n"
             f"{r['response']}"
         )
-    return f"✗ {r.get('error','unknown error')}\n\nfull trace:\n{json.dumps(r.get('fallbacks_tried',[]), indent=2)}"
+
+    # Failure mode — show the chain, mark permanents visibly.
+    tried = r.get("fallbacks_tried", [])
+    summary_lines = []
+    n_perm = sum(1 for t in tried if t.get("permanent"))
+    summary_lines.append(f"✗ {r.get('error', 'unknown error')}")
+    if n_perm:
+        summary_lines.append(f"  ({n_perm} failure(s) were permanent — skipped all keys & retried the chain)")
+    if r.get("circuit_skipped"):
+        summary_lines.append(
+            f"  (circuit-breaker skipped {len(r['circuit_skipped'])} candidate(s) that failed repeatedly)"
+        )
+    summary_lines.append("")
+    summary_lines.append("Attempts in order:")
+    for i, t in enumerate(tried, 1):
+        perm = "  [permanent]" if t.get("permanent") else ""
+        http = f"  HTTP {t.get('http_code')}" if t.get("http_code") else ""
+        summary_lines.append(
+            f"  {i:>2}. {t.get('provider','?'):<14} {t.get('model','?'):<46} "
+            f"key={t.get('key_index', '-')}{http}{perm}"
+        )
+        err = (t.get("error") or "")
+        if err:
+            summary_lines.append(f"        → {err[:200]}")
+    return "\n".join(summary_lines)

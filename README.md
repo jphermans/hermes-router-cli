@@ -186,6 +186,12 @@ hr auth                            # which providers have keys
 4. **Call** the cheapest. On failure, **retry inside the same provider by
    rotating keys** (if the provider has multiple), with exponential backoff.
 
+   **Fail-fast on permanent errors**: HTTP 400/401/403/404/422/etc. mean "this
+   request itself is wrong" — don't retry, don't rotate keys, don't try
+   other variants of this same request. Skip immediately to the next
+   candidate. Cuts wasted time on auth/permissions/model-not-found from
+   O(keys × retries) per failed provider to **1 attempt**.
+
 5. **Fall back** in this order:
    1. Next-cheapest candidate in the price-ranked plan.
    2. The configured curated chain (defaults to a small set of good-fast-cheap
@@ -194,7 +200,14 @@ hr auth                            # which providers have keys
    3. Any other model that wasn't in the plan, regardless of tier, still
       respecting `cost_class` and `vision`.
 
+   **Circuit breaker**: in any single route() invocation, a (provider, model)
+   that accumulates 3+ retryable failures (429/5xx/timeout) gets temporarily
+   skipped for the rest of the run. The router doesn't waste budget hammering
+   a known-broken provider while looking for a working one elsewhere.
+
 6. **Return** either the answer, or a complete trace of every attempt + error.
+   Each attempt entry records whether it was `permanent` (skipped all keys),
+   `retryable` (transient, retried with backoff), or `ok` (succeeded).
 
 The whole thing runs in one Python process. No daemon, no DB, no proxy.
 

@@ -39,7 +39,13 @@ class Handler(BaseHTTPRequestHandler):
         _ = self.rfile.read(length) if length else b""
 
         # Default behaviour: any /chat/completions request returns a 200.
-        # Optional path suffixes /ok|/empty|/fail/<n> override the behaviour.
+        # Optional path suffixes override behaviour:
+        #   /ok               — always 200 (default)
+        #   /empty            — always 200 with empty content
+        #   /fail/<n>         — 500 for the first <n> calls; succeed after
+        #   /status/<code>    — always return that status code with that status's
+        #                       typical JSON error body (e.g. /status/404,
+        #                       /status/401, /status/429, /status/503)
         if path.startswith("/chat/completions") or path == "/v1/chat/completions":
             sub = ""  # default 200
         elif path.startswith("/ok"):
@@ -52,8 +58,24 @@ class Handler(BaseHTTPRequestHandler):
                 STATE["fail_until"] = int(path.split("/")[2])
             except Exception:
                 STATE["fail_until"] = 1
+        elif path.startswith("/status"):
+            sub = "status"
+            try:
+                STATE["status_code"] = int(path.split("/")[2])
+            except Exception:
+                STATE["status_code"] = 500
         else:
             self._reply(404, {"error": "unknown path"})
+            return
+
+        # /status/<code>: ALWAYS return that code (used to test fail-fast).
+        if sub == "status":
+            with STATE_LOCK:
+                code = STATE.get("status_code", 500)
+            payload = {
+                "error": {"message": f"forced {code}", "code": str(code)},
+            }
+            self._reply(code, payload)
             return
 
         # /empty always returns empty content
