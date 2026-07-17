@@ -172,14 +172,33 @@ def step_symlink(n: int = 4, total: int = 5) -> None:
         if Path(existing_target).resolve() == hr.resolve():
             info(_c(f"Already symlinked → {humanize_path(hr)}", Style.DIM))
             ok("Symlink")
-            return
         else:
             info(f"Existing symlink points elsewhere ({existing_target}); updating.")
+            SYMLINK.unlink()
+            os.symlink(hr, SYMLINK)
+            ok(f"Symlink updated: {humanize_path(SYMLINK)} → {humanize_path(hr)}")
     elif SYMLINK.exists():
         info(f"Existing file at {SYMLINK}; replacing with symlink.")
         SYMLINK.unlink()
-    os.symlink(hr, SYMLINK)
-    ok(f"Symlink created: {humanize_path(SYMLINK)} → {humanize_path(hr)}")
+        os.symlink(hr, SYMLINK)
+        ok(f"Symlink created: {humanize_path(SYMLINK)} → {humanize_path(hr)}")
+    else:
+        os.symlink(hr, SYMLINK)
+        ok(f"Symlink created: {humanize_path(SYMLINK)} → {humanize_path(hr)}")
+
+    # ── Also symlink the argcomplete helpers so users don't have to type
+    #    the full .venv/bin/ path in their .bashrc. These power `hr <Tab>`.
+    venv_bin = ROOT / ".venv" / "bin"
+    for helper in ("register-python-argcomplete", "activate-global-python-argcomplete"):
+        src = venv_bin / helper
+        dst = LOCAL_BIN / helper
+        if not src.exists():
+            continue  # argcomplete not installed; skip silently
+        if dst.is_symlink() or dst.exists():
+            dst.unlink()
+        os.symlink(src, dst)
+    ok("argcomplete helpers on PATH (register-python-argcomplete, activate-global-python-argcomplete)")
+
     # PATH hint
     if LOCAL_BIN.exists() and os.environ.get("PATH", "").find(str(LOCAL_BIN)) == -1:
         warn(f"{humanize_path(LOCAL_BIN)} is not on your PATH yet")
@@ -283,7 +302,7 @@ import subprocess
 from pathlib import Path
 
 PLUGIN_NAME = "hermes-router"
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 
 
 def _find_project() -> Path:
@@ -693,6 +712,22 @@ def cmd_uninstall(args) -> int:
         warn(f"Skipping ~/.local/bin/hr: exists but is not a symlink (regular file?).")
     else:
         info(_c("No ~/.local/bin/hr symlink present — nothing to remove.", Style.DIM))
+
+    # Also remove the argcomplete helpers — only if they're ours
+    # (point into our .venv). Same ownership rule as the main hr symlink.
+    # Target shape: <ROOT>/.venv/bin/<helper>
+    # So we go up 2 levels (→ <ROOT>/.venv) and check it's inside ROOT.
+    for helper in ("register-python-argcomplete", "activate-global-python-argcomplete"):
+        h = Path.home() / ".local" / "bin" / helper
+        if h.is_symlink():
+            try:
+                tgt = Path(os.readlink(h)).resolve()
+                # tgt should be <ROOT>/.venv/bin/<helper>; its grandparent
+                # (<ROOT>/.venv) must live inside ROOT.
+                if str(tgt.parent.parent).startswith(str(ROOT.resolve()) + "/"):
+                    targets.append(("argcomplete", h, f"remove ~/.local/bin/{helper}"))
+            except (OSError, ValueError):
+                pass
 
     if args.purge:
         if venv.exists():

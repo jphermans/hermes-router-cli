@@ -294,6 +294,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    # Optional shell completion via argcomplete (bash/zsh/fish).
+    # The library reads argparse definitions automatically — no hand-maintained
+    # completion strings. If the package isn't installed, skip silently.
+    try:
+        import argcomplete  # type: ignore
+        argcomplete.autocomplete(parser)
+    except ImportError:
+        pass
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):
         # Use our rich help instead of argparse's default

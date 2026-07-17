@@ -11,7 +11,7 @@
 [![Models](https://img.shields.io/badge/models-37-2ea44f)](config.yaml)
 [![Sub-commands](https://img.shields.io/badge/subcommands-8-blue)](#-usage)
 [![Tests](https://img.shields.io/badge/tests-28%20passing-brightgreen)](tests/)
-[![Plugin](https://img.shields.io/badge/Hermes%20Plugin-2.1.0-8A2BE2)](#-hermes-agent-plugin)
+[![Plugin](https://img.shields.io/badge/Hermes%20Plugin-2.2.0-8A2BE2)](#-hermes-agent-plugin)
 [![Cost](https://img.shields.io/badge/$0%2Ftoken-free%20pool-2ea44f)](#-free-vs-paid--the-one-knob)
 
 <p align="center">
@@ -29,6 +29,22 @@ can call). Same engine, different surfaces.
 </div>
 
 ---
+
+## 🎉 What's new in 2.2
+
+hermes-router 2.2 adds **shell tab-completion** so you can discover every
+subcommand and flag by hitting <kbd>Tab</kbd> — no more `hr --help` to find
+the right flag name.
+
+| Feature | How it works |
+|---------|---------------|
+| **Tab-completion** for bash / zsh / fish | Built on [`argcomplete`](https://github.com/kislyuk/argcomplete). Auto-reads every argparse definition — zero hand-maintained completion strings. New flags appear in completion for free. |
+| **Per-flag choices** | `--class free|paid|any`, `--tier cheap|standard|pro` — all completable. |
+| **Subcommand names** | `hr <Tab>` shows all 8 subcommands. |
+| **Zero manual sync** | Add a new flag in `add_subparser()` and it shows up in <kbd>Tab</kbd> the next time you install. |
+
+Backwards compatible with 2.1. `argcomplete` is a small dependency
+(~50 KB) and is skipped silently if not installed.
 
 ## 🎉 What's new in 2.1
 
@@ -70,6 +86,7 @@ auto-merged into `fallback_chains: {zai: ...}`.
 1. [🌟 Why this exists](#-why-this-exists)
 1. [⚡ Quick start: install in 2 minutes](#-quick-start-install-in-2-minutes)
 1. [🪶 Using hr in your terminal (CLI)](#-using-hr-in-your-terminal-cli)
+   1. [Tab-completion (bash / zsh / fish)](#tab-completion-bash--zsh--fish)
 1. [🧩 Hermes Agent plugin: use from chat](#-hermes-agent-plugin-use-from-chat)
 1. [📦 Alternative install methods](#-alternative-install-methods)
 1. [🗑️ Uninstall](#-uninstall)
@@ -233,6 +250,51 @@ e.g. `hr route --help`, `hr chat --help`, `hr budget --help`.
 
 > **Note:** colors and icons only render when stdout is a TTY (interactive
 > terminal). Piped output (`hr --help | cat`) stays plain text — script-friendly.
+
+### Tab-completion (bash / zsh / fish)
+
+Hit <kbd>Tab</kbd> to discover every subcommand, flag, and choice — no more
+guessing or `hr --help` lookups. Powered by
+[`argcomplete`](https://github.com/kislyuk/argcomplete) (auto-installed by
+the bootstrap as of v2.2).
+
+```bash
+# What you get:
+hr <Tab>              # → route models verify auth doctor budget chat init
+hr route <Tab>        # → (prints help, since `route` needs --prompt)
+hr route --<Tab>      # → --prompt -p --tier --class --max-tokens --pretty …
+hr route --class <Tab>  # → free paid any
+hr route --tier <Tab>   # → cheap standard pro
+hr models --class <Tab> # → free paid any
+hr doctor --<Tab>      # → --json --verbose
+```
+
+**Activate it in your shell** (one line, picked by your shell):
+
+```bash
+# bash — add to ~/.bashrc
+eval "$(register-python-argcomplete hr)"
+
+# zsh — add to ~/.zshrc
+autoload -U bashcompinit && bashcompinit
+eval "$(register-python-argcomplete hr)"
+
+# fish — add to ~/.config/fish/config.fish
+register-python-argcomplete hr | source
+```
+
+> **Tip:** `register-python-argcomplete` lives inside the hermes-router
+> `.venv/`. If your shell can't find it, point at the full path:
+> `eval "$(~/.hermes/hermes-router/.venv/bin/register-python-argcomplete hr)"`
+
+**Global completion (catches every Python CLI):** put this in `~/.bashrc`
+and you never need to `eval` per-tool again — `argcomplete` finds any
+`argcomplete.autocomplete()`-aware CLI on your `$PATH`:
+
+```bash
+eval "$(register-python-argcomplete --no-defaults --complete-arguments -- / hr \
+  2>/dev/null)"   # ↑ narrow to a single command, or use a * wildcard for all
+```
 
 ### Check the health of your setup
 
