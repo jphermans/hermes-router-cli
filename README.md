@@ -705,14 +705,8 @@ Everything after `--` goes straight to `install.py`.
 
 ## 🗑️ Uninstall
 
-### Remove everything
-
-```bash
-hermes plugins disable hermes-router      # 1. disable the Hermes plugin
-hermes plugins remove hermes-router       # 2. remove it entirely
-rm -f ~/.local/bin/hr                     # 3. remove the CLI symlink
-rm -rf ~/.hermes/hermes-router             # 4. delete the project
-```
+All three uninstall methods below work on every platform (Linux, macOS,
+WSL2). Pick whichever fits — they all leave zero residue.
 
 ### One-command script (easiest)
 
@@ -720,8 +714,18 @@ rm -rf ~/.hermes/hermes-router             # 4. delete the project
 bash ~/.hermes/scripts/uninstall-hermes-router.sh
 ```
 
-> This script removes everything — plugin, symlink, project directory — in one
-> go. Installed automatically by the bootstrap; no download needed.
+> This script removes everything — plugin, symlink, project directory —
+> in one go. Installed automatically by the bootstrap; no download needed.
+> Works the same on every platform.
+
+### Manual 4-step
+
+```bash
+hermes plugins disable hermes-router      # 1. disable the Hermes plugin
+hermes plugins remove hermes-router       # 2. remove it entirely
+rm -f ~/.local/bin/hr                     # 3. remove the CLI symlink
+rm -rf ~/.hermes/hermes-router            # 4. delete the project
+```
 
 ### Via the installer script
 
@@ -730,6 +734,33 @@ python3 install.py uninstall --dry-run       # 👀 see what would be removed
 python3 install.py uninstall                 # 🗑️  remove ~/.local/bin/hr (interactive confirm)
 python3 install.py uninstall --yes --purge   # 🔥 also delete .venv/ (no venv left behind)
 ```
+
+> The installer script detects your platform automatically. On macOS it
+> also strips the activation block from `~/.zshrc` (or `~/.bash_profile`);
+> on WSL it strips both `~/.bashrc` and `~/.profile`. Add `--purge-project`
+> to nuke the source tree itself (DANGEROUS — also removes your
+> `config.yaml`).
+
+### Per-platform notes
+
+| Platform | Extra steps |
+|---|---|
+| **Linux** | None — the three methods above are complete. |
+| **macOS** | If you added `~/.local/bin` to `PATH` manually during install, you can leave that line in `~/.zshrc` / `~/.bash_profile` — it doesn't conflict with anything. |
+| **WSL2** | If you set `[interop] appendWindowsPath = false` in `/etc/wsl.conf` for the install, you may want to flip it back to `true` after uninstall (we don't touch it). Restart the WSL distro with `wsl.exe --shutdown` from PowerShell, or just close the terminal. |
+
+### Verify uninstall worked
+
+```bash
+which hr                    # should print nothing (or an error)
+hermes plugins list         # hermes-router should NOT be in the list
+ls ~/.hermes/hermes-router  # should print "No such file or directory"
+```
+
+If any of those still find artifacts, run `python3 install.py uninstall`
+again with `--purge` to wipe the venv too, and remove any leftover
+`# >>> hermes-router tab-completion (...) >>>` blocks from your rc
+files manually.
 
 ---
 
