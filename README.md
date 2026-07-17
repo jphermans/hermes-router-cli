@@ -75,7 +75,9 @@ trace.
 ## ⚡ Quick start: curl → install
 
 One-liner — no `git clone` needed. The bootstrap downloads the latest tarball
-from GitHub, verifies it, and runs `install.py`:
+from GitHub, verifies it, and runs `install.py` — all into
+`/home/jphermans/documents/hermes-router/` (Hermes Agent has MCP filesystem
+access there):
 
 ```bash
 python3 -c "$(curl -fsSL https://raw.githubusercontent.com/jphermans/hermes-router-cli/main/bootstrap-install.py)"

@@ -76,8 +76,9 @@ def main(argv):
                          "Skip for the latest commit, or pin to a specific commit.")
     ap.add_argument("--dry-run", action="store_true",
                     help="download + verify only; don't actually run install.py")
-    ap.add_argument("--prefix", default=".",
-                    help="target directory for the extracted project (default: current dir)")
+    ap.add_argument("--prefix", default="/home/jphermans/documents/hermes-router",
+                    help="target directory (default: /home/jphermans/documents/hermes-router \
+                          — Hermes Agent has MCP access to this path)")
     # Everything after `--` is forwarded as a single shell-style argv list
     # to install.py. argparse's `nargs='+'` is too clunky for this.
     # Split argv at '--': everything before is for us, everything after
